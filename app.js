@@ -30,6 +30,7 @@ const dauPlatforms = [
   { key: 'harmony', label: 'HarmonyOS', color: '#b45309' },
 ];
 let dauRows = [];
+let dauPage = 1;
 let dauSelected = ['total'];
 const dauDate = days => new Date(Date.parse(dateInChina.format(new Date())) - days * 86400000).toISOString().slice(0, 10);
 const dauRange = days => [dauDate(days), dauDate(1)];
@@ -44,16 +45,30 @@ function renderDau() {
   dauSummary.hidden = !count;
   dauDetails.hidden = !count;
   dauTable.replaceChildren();
+  const pages = Math.ceil(count / 10);
+  document.getElementById('dau-page-info').textContent = '共 ' + count + ' 条 · ' + dauPage + ' / ' + pages + ' 页';
+  document.getElementById('dau-prev').disabled = dauPage <= 1;
+  document.getElementById('dau-next').disabled = dauPage >= pages;
   if (!count) return;
 
   const last = dauRows.at(-1);
   const previous = dauRows.at(-2);
-  dauSummary.textContent = last.date + ' · ' + platforms.map(({ key, label }) => {
+  dauSummary.replaceChildren(...platforms.map(({ key, label }) => {
     const value = last[key];
     const delta = Number.isInteger(value) && Number.isInteger(previous?.[key]) ? value - previous[key] : null;
-    return label + ' ' + dauFormat(value) +
-      (delta === null ? '' : '（较前一日 ' + (delta > 0 ? '+' : '') + dauFormat(delta) + '）');
-  }).join('　');
+    const metric = document.createElement('div');
+    const caption = document.createElement('small');
+    caption.textContent = label + ' · ' + last.date.slice(5);
+    const number = document.createElement('strong');
+    number.textContent = dauFormat(value);
+    metric.append(caption, number);
+    if (delta !== null) {
+      const change = document.createElement('small');
+      change.textContent = '较前一日 ' + (delta > 0 ? '+' : '') + dauFormat(delta);
+      metric.append(change);
+    }
+    return metric;
+  }));
 
   const header = dauTable.createTHead().insertRow();
   for (const label of ['日期', ...platforms.map(item => item.label)]) {
@@ -63,7 +78,7 @@ function renderDau() {
     header.append(cell);
   }
   const tableBody = dauTable.createTBody();
-  for (const row of dauRows) {
+  for (const row of dauRows.slice((dauPage - 1) * 10, dauPage * 10)) {
     const tr = tableBody.insertRow();
     tr.insertCell().textContent = row.date;
     for (const { key } of platforms) tr.insertCell().textContent = dauFormat(row[key]);
@@ -76,21 +91,27 @@ function renderDau() {
   const x = i => count === 1 ? 382 : 66 + i * 628 / (count - 1);
   const y = value => 202 - value * 176 / (4 * step);
   dauChart.innerHTML = Array.from({ length: 5 }, (_, i) =>
-    '<line x1="66" x2="694" y1="' + y(i * step) + '" y2="' + y(i * step) + '" stroke="#e5e9f0"/>' +
+    '<line x1="66" x2="694" y1="' + y(i * step) + '" y2="' + y(i * step) + '" stroke="#dce5ef" stroke-dasharray="3 4"/>' +
     '<text x="58" y="' + (y(i * step) + 4) + '" text-anchor="end">' + (i * step).toLocaleString('zh-CN') + '</text>'
   ).join('');
   for (const { key, color } of platforms) {
     let path = '';
     dauRows.forEach((row, i) => {
       if (!Number.isInteger(row[key])) return;
-      const command = Number.isInteger(dauRows[i - 1]?.[key]) ? 'L' : 'M';
-      path += command + x(i) + ' ' + y(row[key]) + ' ';
+      const previous = dauRows[i - 1]?.[key];
+      const nextX = x(i), nextY = y(row[key]);
+      if (!Number.isInteger(previous)) {
+        path += 'M ' + nextX + ' ' + nextY + ' ';
+      } else {
+        const middle = (x(i - 1) + nextX) / 2;
+        path += 'C ' + middle + ' ' + y(previous) + ' ' + middle + ' ' + nextY + ' ' + nextX + ' ' + nextY + ' ';
+      }
     });
-    dauChart.insertAdjacentHTML('beforeend', '<path d="' + path + '" fill="none" stroke="' + color + '" stroke-width="2.5"/>');
+    dauChart.insertAdjacentHTML('beforeend', '<path d="' + path + '" fill="none" stroke="' + color + '" stroke-width="1.55"/>');
     dauRows.forEach((row, i) => {
       if (Number.isInteger(row[key])) {
         dauChart.insertAdjacentHTML('beforeend', '<circle cx="' + x(i) + '" cy="' + y(row[key]) +
-          '" r="' + (count <= 14 ? 2.5 : 1.2) + '" fill="' + color + '"/>');
+          '" r="' + (count <= 14 ? 2.5 : 1.2) + '" fill="white" stroke="' + color + '" stroke-width="1"/>');
       }
     });
   }
@@ -106,7 +127,7 @@ function renderDau() {
       const fit = i => y(Math.max(0, Math.min(4 * step, meanY + slope * (i - meanX))));
       dauChart.insertAdjacentHTML('beforeend', '<line x1="' + x(start) + '" y1="' + fit(start) +
         '" x2="' + x(end) + '" y2="' + fit(end) +
-        '" stroke="#1e40af" stroke-width="1.5" stroke-dasharray="6 5"><title>总计线性趋势</title></line>');
+        '" stroke="#1e40af" stroke-width="1.5" stroke-dasharray="6 5"></line>');
     }
   }
   const ticks = Math.min(count, 7);
@@ -148,6 +169,9 @@ function renderDau() {
   };
 }
 
+document.getElementById('dau-prev').onclick = () => { dauPage--; renderDau(); };
+document.getElementById('dau-next').onclick = () => { dauPage++; renderDau(); };
+
 async function queryDau([start, end] = []) {
   const days = (Date.parse(end) - Date.parse(start)) / 86400000 + 1;
   if (!(days >= 1 && days <= 90 && end <= dauDate(1))) {
@@ -167,6 +191,7 @@ async function queryDau([start, end] = []) {
     if (!response.ok || !Array.isArray(data.rows) || !data.rows.length) {
       throw new Error(data.error || '日活服务暂不可用，请稍后重试。');
     }
+    dauPage = 1;
     dauRows = data.rows;
     renderDau();
     dauStatus.textContent = start + ' 至 ' + end +
@@ -184,10 +209,19 @@ function mountDauControls() {
   const range = ref(null);
   const loading = ref(false);
   const selected = ref(dauSelected);
-  const shortcuts = [7, 30].map(days => ({
-    text: '最近 ' + days + ' 天',
-    value: () => dauRange(days).map(date => new Date(date + 'T00:00:00')),
-  }));
+  const asDates = range => range.map(date => new Date(date + 'T00:00:00'));
+  const monthRange = offset => {
+    const [year, month] = dateInChina.format(new Date()).split('-').map(Number);
+    const start = new Date(Date.UTC(year, month - 1 + offset, 1)).toISOString().slice(0, 10);
+    const end = offset ? new Date(Date.UTC(year, month - 1, 0)).toISOString().slice(0, 10) : dauDate(1);
+    return [start, end];
+  };
+  const shortcuts = [
+    { text: '近7天', value: () => asDates(dauRange(7)) },
+    { text: '近30天', value: () => asDates(dauRange(30)) },
+    { text: '本月', value: () => asDates(monthRange(0)) },
+    { text: '上月', value: () => asDates(monthRange(-1)) },
+  ];
   createApp({
     setup() {
       return () => [

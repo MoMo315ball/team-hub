@@ -457,3 +457,15 @@ input,select{font-family:inherit;font-size:13px;}
 #prototype-list strong { margin-right: auto; }
 #prototype-preview { width: min(1100px, 92vw); border: 0; border-radius: 12px; }
 #prototype-preview iframe { width: 100%; height: 75vh; border: 0; }
+
+#dau-summary:not([hidden]) { display: flex; flex-wrap: wrap; gap: 16px; margin: 12px 0 18px; }
+#dau-summary > div { border-left: 2px solid #dbe7fb; padding-left: 12px; min-width: 115px; }
+#dau-summary strong { display: block; font-size: 24px; font-variant-numeric: tabular-nums; }
+#dau-summary small { color: #64748b; font-weight: 400; }
+#dau-plot { background: white; }
+#dau-tooltip { color: #182335; background: white; border: 1px solid #e5eaf0; box-shadow: 0 6px 20px #18233616; }
+.dau-date-popup .el-picker-panel__sidebar { width: 86px; }
+.dau-date-popup .el-picker-panel__sidebar + .el-picker-panel__body { margin-left: 86px; }
+.dau-date-popup .el-picker-panel__shortcut { height: 28px; line-height: 28px; }
+.dau-pages { display: flex; align-items: center; justify-content: flex-end; gap: 8px; margin-top: 10px; }
+.dau-pages button:disabled { opacity: .45; }
