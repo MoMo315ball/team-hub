@@ -309,8 +309,7 @@ new ResizeObserver(() => { if (dauRows.length) renderDau(); }).observe(dauChart)
 const prototypeForm = document.getElementById('prototype-upload');
 const prototypeList = document.getElementById('prototype-list');
 const prototypeStatus = document.getElementById('prototype-status');
-const prototypeDialog = document.getElementById('prototype-preview');
-const prototypeFrame = prototypeDialog.querySelector('iframe');
+const prototypeCount = document.getElementById('prototype-count');
 const prototypeBucket = supabase.storage.from('teamhub-prototypes');
 const prototypeLimit = 10 * 1024 * 1024;
 const prototypeTypes = {
@@ -318,7 +317,6 @@ const prototypeTypes = {
   webp: 'image/webp', svg: 'image/svg+xml', ico: 'image/x-icon',
   woff: 'font/woff', woff2: 'font/woff2', mp4: 'video/mp4', mp3: 'audio/mpeg'
 };
-prototypeDialog.addEventListener('close', () => { prototypeFrame.srcdoc = ''; });
 
 function unpackPrototype(bytes) {
   let expanded = 0;
@@ -395,30 +393,75 @@ async function loadPrototypes() {
   prototypeList.replaceChildren();
   for (const item of data) {
     if (!item.id) continue;
-    const [, encoded] = item.name.split('--', 2);
+    const [id, encoded] = item.name.split('--', 2);
     if (!encoded) continue;
     const extension = item.name.endsWith('.zip') ? '.zip' : '.html';
     const title = decodeURIComponent(encoded.slice(0, -extension.length));
     const row = document.createElement('li');
     const name = document.createElement('strong');
     name.textContent = title;
-    row.append(name);
-    for (const action of ['在线预览', '下载原文件']) {
+    const identity = document.createElement('div');
+    identity.className = 'prototype-identity';
+    const format = document.createElement('span');
+    format.textContent = extension.slice(1).toUpperCase();
+    identity.append(name, format);
+    row.append(identity);
+    const actions = document.createElement('div');
+    actions.className = 'prototype-actions';
+    row.append(actions);
+    const key = account.id + '/' + item.name;
+    for (const action of ['在线预览', '下载原文件', '重命名', '删除']) {
       const button = document.createElement('button');
       button.type = 'button';
       button.textContent = action;
       button.onclick = async () => {
-        button.disabled = true;
+        let preview;
+        if (action === '在线预览') {
+          preview = window.open('about:blank', '_blank');
+          if (!preview) {
+            prototypeStatus.textContent = '请允许浏览器打开新标签页。';
+            return;
+          }
+          preview.opener = null;
+          preview.document.body.textContent = '正在加载预览…';
+        }
+        for (const control of actions.children) control.disabled = true;
         try {
-          const { data: blob, error } = await prototypeBucket.download(account.id + '/' + item.name);
+          if (action === '重命名' || action === '删除') {
+            if (action === '重命名') {
+              const nextTitle = window.prompt('输入新的原型名称', title)?.trim();
+              if (!nextTitle || nextTitle === title) return;
+              const encodedTitle = encodePrototypeTitle(nextTitle);
+              const { error } = await prototypeBucket.move(key, account.id + '/' + id + '--' + encodedTitle + extension);
+              if (error) throw error;
+            } else {
+              if (!window.confirm('删除「' + title + '」及其云端原文件？此操作无法撤销。')) return;
+              const { data: removed, error } = await prototypeBucket.remove([key]);
+              if (error) throw error;
+              if (!removed?.length) throw new Error('未能删除原型，请检查云端存储权限。');
+            }
+            if (account !== currentAccount) return;
+            await loadPrototypes();
+            if (account === currentAccount) prototypeStatus.textContent = action === '删除' ? '已删除。' : '已重命名。';
+            return;
+          }
+          const { data: blob, error } = await prototypeBucket.download(key);
           if (account !== currentAccount) return;
           if (error) throw error;
           if (action === '在线预览') {
             const bytes = new Uint8Array(await blob.arrayBuffer());
             const project = extension === '.zip' ? unpackPrototype(bytes) : { files: { 'index.html': bytes }, entry: 'index.html' };
             if (account !== currentAccount) return;
-            prototypeFrame.srcdoc = prototypeDocument(project.files, project.entry);
-            prototypeDialog.showModal();
+            if (preview.closed) return;
+            const doc = preview.document;
+            doc.title = title;
+            doc.body.style.margin = '0';
+            const frame = doc.createElement('iframe');
+            frame.setAttribute('sandbox', 'allow-scripts');
+            frame.title = title;
+            frame.style.cssText = 'display:block;width:100%;height:100vh;border:0';
+            frame.srcdoc = prototypeDocument(project.files, project.entry);
+            doc.body.replaceChildren(frame);
           } else {
             const link = document.createElement('a');
             link.href = URL.createObjectURL(blob);
@@ -426,14 +469,27 @@ async function loadPrototypes() {
             link.click();
             setTimeout(() => URL.revokeObjectURL(link.href), 1000);
           }
-        } catch (error) { prototypeStatus.textContent = error.message || '操作失败。'; }
-        finally { button.disabled = false; }
+        } catch (error) {
+          preview?.close();
+          if (account === currentAccount) prototypeStatus.textContent = error.message || '操作失败。';
+        } finally {
+          if (account !== currentAccount) preview?.close();
+          for (const control of actions.children) control.disabled = false;
+        }
       };
-      row.append(button);
+      button.className = action === '删除' ? 'prototype-delete' : action === '在线预览' ? 'prototype-open' : '';
+      actions.append(button);
     }
     prototypeList.append(row);
   }
+  prototypeCount.textContent = prototypeList.children.length + ' 个';
   prototypeStatus.textContent = prototypeList.children.length ? '' : '还没有原型。';
+}
+
+function encodePrototypeTitle(title) {
+  const encoded = encodeURIComponent(title).replace(/-/g, '%2D');
+  if (title.length > 80 || encoded.length > 230) throw new Error('请缩短原型名称。');
+  return encoded;
 }
 
 prototypeForm.addEventListener('submit', async event => {
@@ -466,8 +522,7 @@ prototypeForm.addEventListener('submit', async event => {
     if (blob.size > prototypeLimit) throw new Error('单次上传最多 10 MB。');
     if (zip) unpackPrototype(new Uint8Array(await blob.arrayBuffer()));
     if (account !== currentAccount) return;
-    const encoded = encodeURIComponent(name).replace(/-/g, '%2D');
-    if (encoded.length > 230) throw new Error('请缩短原型名称。');
+    const encoded = encodePrototypeTitle(name);
     const key = account.id + '/' + crypto.randomUUID() + '--' + encoded + (zip ? '.zip' : '.html');
     const { error } = await prototypeBucket.upload(key, blob, { contentType: 'application/octet-stream' });
     if (error) throw error;
@@ -481,6 +536,7 @@ prototypeForm.addEventListener('submit', async event => {
 
 document.querySelector('[data-tab="prototypes"]').addEventListener('click', () => {
   prototypeList.replaceChildren();
+  prototypeCount.textContent = '';
   prototypeStatus.textContent = '正在读取原型库…';
   loadPrototypes().catch(error => { prototypeStatus.textContent = error.message; });
 });
