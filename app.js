@@ -24,10 +24,10 @@ const dauDetails = document.getElementById('dau-details');
 const dauTable = document.getElementById('dau-table');
 const dateInChina = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Shanghai' });
 const dauPlatforms = [
-  { key: 'total', label: '总计', color: '#2563eb' },
-  { key: 'ios', label: 'iOS', color: '#7c3aed' },
-  { key: 'android', label: 'Android', color: '#087f5b' },
-  { key: 'harmony', label: 'HarmonyOS', color: '#b45309' },
+  { key: 'total', label: '总计', color: '#2463eb' },
+  { key: 'ios', label: 'iOS', color: '#8663ce' },
+  { key: 'android', label: 'Android', color: '#14978f' },
+  { key: 'harmony', label: 'HarmonyOS', color: '#d38537' },
 ];
 let dauRows = [];
 let dauPage = 1;
@@ -53,10 +53,11 @@ function renderDau() {
 
   const last = dauRows.at(-1);
   const previous = dauRows.at(-2);
-  dauSummary.replaceChildren(...platforms.map(({ key, label }) => {
+  dauSummary.replaceChildren(...platforms.map(({ key, label, color }) => {
     const value = last[key];
     const delta = Number.isInteger(value) && Number.isInteger(previous?.[key]) ? value - previous[key] : null;
     const metric = document.createElement('div');
+    metric.style.borderColor = color;
     const caption = document.createElement('small');
     caption.textContent = label + ' · ' + last.date.slice(5);
     const number = document.createElement('strong');
@@ -88,11 +89,19 @@ function renderDau() {
   const rough = Math.max(1, Math.max(...known) / 4);
   const magnitude = 10 ** Math.floor(Math.log10(rough));
   const step = [1, 2, 2.5, 3, 4, 5, 6, 8, 10].find(n => n * magnitude >= rough) * magnitude;
-  const x = i => count === 1 ? 382 : 66 + i * 628 / (count - 1);
-  const y = value => 202 - value * 176 / (4 * step);
+  const width = dauChart.clientWidth;
+  if (!width) return;
+  const left = 55;
+  const right = Math.max(left + 1, width - 14);
+  const top = 14;
+  const bottom = 261;
+  const span = right - left;
+  dauChart.setAttribute('viewBox', `0 0 ${width} 290`);
+  const x = i => count === 1 ? (left + right) / 2 : left + i * span / (count - 1);
+  const y = value => bottom - value * (bottom - top) / (4 * step);
   dauChart.innerHTML = Array.from({ length: 5 }, (_, i) =>
-    '<line x1="66" x2="694" y1="' + y(i * step) + '" y2="' + y(i * step) + '" stroke="#dce5ef" stroke-dasharray="3 4"/>' +
-    '<text x="58" y="' + (y(i * step) + 4) + '" text-anchor="end">' + (i * step).toLocaleString('zh-CN') + '</text>'
+    '<line x1="55" x2="' + right + '" y1="' + y(i * step) + '" y2="' + y(i * step) + '" stroke="#dce5ef" stroke-dasharray="3 4"/>' +
+    '<text x="48" y="' + (y(i * step) + 4) + '" text-anchor="end">' + (i * step).toLocaleString('zh-CN') + '</text>'
   ).join('');
   for (const { key, color } of platforms) {
     let path = '';
@@ -107,11 +116,11 @@ function renderDau() {
         path += 'C ' + middle + ' ' + y(previous) + ' ' + middle + ' ' + nextY + ' ' + nextX + ' ' + nextY + ' ';
       }
     });
-    dauChart.insertAdjacentHTML('beforeend', '<path d="' + path + '" fill="none" stroke="' + color + '" stroke-width="1.55"/>');
+    dauChart.insertAdjacentHTML('beforeend', '<path d="' + path + '" fill="none" stroke="' + color + '" stroke-width="' + (key === 'total' ? 1.8 : 1.35) + '"/>');
     dauRows.forEach((row, i) => {
-      if (Number.isInteger(row[key])) {
+      if ((count <= 30 || !Number.isInteger(dauRows[i - 1]?.[key])) && Number.isInteger(row[key])) {
         dauChart.insertAdjacentHTML('beforeend', '<circle cx="' + x(i) + '" cy="' + y(row[key]) +
-          '" r="' + (count <= 14 ? 2.5 : 1.2) + '" fill="white" stroke="' + color + '" stroke-width="1"/>');
+          '" r="' + (count <= 7 ? 2.5 : 1.8) + '" fill="white" stroke="' + color + '" stroke-width="1"/>');
       }
     });
   }
@@ -127,38 +136,38 @@ function renderDau() {
       const fit = i => y(Math.max(0, Math.min(4 * step, meanY + slope * (i - meanX))));
       dauChart.insertAdjacentHTML('beforeend', '<line x1="' + x(start) + '" y1="' + fit(start) +
         '" x2="' + x(end) + '" y2="' + fit(end) +
-        '" stroke="#1e40af" stroke-width="1.5" stroke-dasharray="6 5"></line>');
+        '" stroke="#2463eb" stroke-opacity=".6" stroke-width="1" stroke-dasharray="5 5"></line>');
     }
   }
-  const ticks = Math.min(count, 7);
+  const ticks = Math.min(count, width < 480 ? 4 : 7);
   for (let tick = 0; tick < ticks; tick++) {
     const i = ticks === 1 ? 0 : Math.round(tick * (count - 1) / (ticks - 1));
     const label = document.createElementNS(dauChart.namespaceURI, 'text');
     label.setAttribute('x', x(i));
-    label.setAttribute('y', '225');
+    label.setAttribute('y', String(bottom + 18));
     label.setAttribute('text-anchor', 'middle');
     label.textContent = dauRows[i].date.slice(5);
     dauChart.append(label);
   }
 
   const marker = document.createElementNS(dauChart.namespaceURI, 'line');
-  marker.setAttribute('y1', '26');
-  marker.setAttribute('y2', '202');
+  marker.setAttribute('y1', String(top));
+  marker.setAttribute('y2', String(bottom));
   marker.setAttribute('stroke', '#94a3b8');
   marker.setAttribute('stroke-dasharray', '4 4');
   marker.style.visibility = 'hidden';
   dauChart.append(marker);
   function inspect(event) {
     const bounds = dauChart.getBoundingClientRect();
-    const position = (event.clientX - bounds.left) * 720 / bounds.width;
-    const i = Math.max(0, Math.min(count - 1, Math.round((position - 66) * (count - 1) / 628)));
+    const position = event.clientX - bounds.left;
+    const i = Math.max(0, Math.min(count - 1, Math.round((position - left) * (count - 1) / span)));
     const row = dauRows[i];
     marker.setAttribute('x1', x(i));
     marker.setAttribute('x2', x(i));
     marker.style.visibility = 'visible';
     dauTooltip.textContent = [row.date, ...platforms.map(({ key, label }) => label + '　' + dauFormat(row[key]))].join('\n');
     dauTooltip.hidden = false;
-    dauTooltip.style.left = Math.max(0, Math.min(x(i) * bounds.width / 720 + 10, bounds.width - dauTooltip.offsetWidth)) + 'px';
+    dauTooltip.style.left = Math.max(0, Math.min(x(i) + 8, bounds.width - dauTooltip.offsetWidth)) + 'px';
   }
   dauChart.onpointermove = event => { if (event.pointerType !== 'touch') inspect(event); };
   dauChart.onpointerdown = inspect;
@@ -277,23 +286,27 @@ function mountDauControls() {
   });
   const platforms = dauControls.querySelector('.dau-platforms');
   for (const { key, label, color } of dauPlatforms) {
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.innerHTML = `<span class="dau-dot" style="background:${color}"></span>${label}`;
-    button.setAttribute('aria-pressed', String(dauSelected.includes(key)));
-    button.onclick = () => {
-      const active = dauSelected.includes(key);
-      if (active && dauSelected.length === 1) return;
-      dauSelected = active ? dauSelected.filter(item => item !== key) : [...dauSelected, key];
-      button.setAttribute('aria-pressed', String(!active));
+    const chip = document.createElement('label');
+    chip.style.setProperty('--chip-color', color);
+    const checkbox = document.createElement('input');
+    checkbox.type = 'checkbox';
+    checkbox.checked = dauSelected.includes(key);
+    checkbox.onchange = () => {
+      if (!checkbox.checked && dauSelected.length === 1) {
+        checkbox.checked = true;
+        return;
+      }
+      dauSelected = checkbox.checked ? [...dauSelected, key] : dauSelected.filter(item => item !== key);
       renderDau();
     };
-    platforms.append(button);
+    chip.append(checkbox, label);
+    platforms.append(chip);
   }
   dauStatus.textContent = '选择日期范围查看日活。';
 }
 
 mountDauControls();
+new ResizeObserver(() => { if (dauRows.length) renderDau(); }).observe(dauChart);
 
 const prototypeForm = document.getElementById('prototype-upload');
 const prototypeList = document.getElementById('prototype-list');

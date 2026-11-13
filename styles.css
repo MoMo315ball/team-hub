@@ -503,3 +503,23 @@ input,select{font-family:inherit;font-size:13px;}
 .dau-dates input { width: 100%; min-width: 0; }
 .dau-dates small:empty { display: none; }
 .dau-platforms button[aria-pressed="true"] { background: #f0f6ff; border-color: #bfd5f7; }
+
+.dau-report { border: 1px solid #e5eaf0; border-radius: 10px; padding: 24px; color: #182336; font: 14px Inter, system-ui, sans-serif; }
+.dau-report h3 { font-size: 19px; margin: 0; }
+#dau-summary:not([hidden]) { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 12px; margin: 22px 0; }
+#dau-summary > div { min-width: 0; }
+#dau-summary strong { margin-top: 5px; }
+.dau-query { border-top: 1px solid #edf0f4; padding-top: 14px; margin: 14px 0 0; }
+.dau-platforms { gap: 5px; }
+.dau-platforms label { display: inline-flex; align-items: center; gap: 5px; padding: 6px 9px; border: 1px solid #dce4ee; border-radius: 5px; cursor: pointer; }
+.dau-platforms label:has(input:checked) { background: #f0f6ff; border-color: #bfd5f7; }
+.dau-platforms input { margin: 0; accent-color: var(--chip-color); }
+#dau-status { font-size: 12px; color: #67768b; margin: 8px 0 0; }
+#dau-plot { margin-top: 12px; }
+#dau-chart { height: 290px; touch-action: pan-y; }
+#dau-chart text { font: 11px system-ui, sans-serif; fill: #68778d; }
+#dau-tooltip { top: 18px; padding: 9px; border-radius: 6px; font-size: 12px; }
+#dau-details { margin-top: 16px; border-top: 1px solid #edf0f4; padding-top: 12px; }
+#dau-table th, #dau-table td { padding: 8px; border-bottom: 1px solid #edf0f4; }
+#dau-table th { background: #f6f8fb; }
+#dau-table tbody tr:nth-child(even) { background: white; }
