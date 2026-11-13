@@ -517,7 +517,8 @@ input,select{font-family:inherit;font-size:13px;}
 #dau-status { font-size: 12px; color: #67768b; margin: 8px 0 0; }
 #dau-plot { margin-top: 12px; }
 #dau-chart { height: 290px; touch-action: pan-y; }
-#dau-chart text { font: 11px system-ui, sans-serif; fill: #68778d; }
+#dau-status:empty { display: none; }
+#dau-chart text { font: 10px system-ui, sans-serif; fill: #68778d; }
 #dau-tooltip { top: 18px; padding: 9px; border-radius: 6px; font-size: 12px; }
 #dau-details { margin-top: 16px; border-top: 1px solid #edf0f4; padding-top: 12px; }
 #dau-table th, #dau-table td { padding: 8px; border-bottom: 1px solid #edf0f4; }

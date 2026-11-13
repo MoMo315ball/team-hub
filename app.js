@@ -203,9 +203,7 @@ async function queryDau([start, end] = []) {
     dauPage = 1;
     dauRows = data.rows;
     renderDau();
-    dauStatus.textContent = start + ' 至 ' + end +
-      (data.refreshed ? ' · 已更新' : ' · 已读取缓存') +
-      (data.rows.some(row => row.total === null) ? ' · 部分日期缺数' : '');
+    dauStatus.textContent = data.rows.some(row => row.total === null) ? '部分日期缺数' : '';
   } catch (error) {
     if (token === sessionToken) dauStatus.textContent = '查询失败。' + error.message +
       (dauRows.length ? ' · 图表保留上次结果' : '');

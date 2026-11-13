@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Team Hub</title>
-  <link rel="stylesheet" href="styles.css?v=dau-preview-aligned">
+  <link rel="stylesheet" href="styles.css?v=dau-detail-labels">
 </head>
 <body>
   <div class="login" id="login" style="display:none;">
@@ -129,7 +129,7 @@
           <svg id="dau-chart" role="img" aria-label="每日活跃用户趋势" viewBox="0 0 720 240"></svg>
           <div id="dau-tooltip" hidden></div>
         </div>
-        <details id="dau-details" hidden><summary>每日明细</summary><table id="dau-table" class="data-table"></table><nav class="dau-pages" aria-label="每日明细分页"><small id="dau-page-info" aria-live="polite"></small><button id="dau-prev">上一页</button><button id="dau-next">下一页</button></nav></details>
+        <details id="dau-details" hidden><summary>查看详细数据</summary><table id="dau-table" class="data-table"></table><nav class="dau-pages" aria-label="每日明细分页"><small id="dau-page-info" aria-live="polite"></small><button id="dau-prev">上一页</button><button id="dau-next">下一页</button></nav></details>
       </div>
       <div class="card">
         <h3>我负责的数据模块 <span class="hint">新建后可导入数据 · 切换表格/折线/柱状</span></h3>
@@ -263,6 +263,6 @@
   <script src="xlsx.full.min.js"></script>
   <script src="lunar.min.js"></script>
   <script src="vendor/fflate.js"></script>
-  <script src="app.js?v=dau-preview-aligned"></script>
+  <script src="app.js?v=dau-detail-labels"></script>
 </body>
 </html>
