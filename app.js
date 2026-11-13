@@ -204,100 +204,96 @@ async function queryDau([start, end] = []) {
 }
 
 function mountDauControls() {
-  const { createApp, h, ref } = window.Vue;
-  const { ElDatePicker, ElCheckboxGroup, ElCheckboxButton } = window.ElementPlus;
-  const range = ref(null);
-  const loading = ref(false);
-  const selected = ref(dauSelected);
-  const asDates = range => range.map(date => new Date(date + 'T00:00:00'));
-  const monthRange = offset => {
-    const [year, month] = dateInChina.format(new Date()).split('-').map(Number);
-    const start = new Date(Date.UTC(year, month - 1 + offset, 1)).toISOString().slice(0, 10);
-    const end = offset ? new Date(Date.UTC(year, month - 1, 0)).toISOString().slice(0, 10) : dauDate(1);
-    return [start, end];
+  dauControls.className = 'dau-query';
+  dauControls.innerHTML = `
+    <details class="dau-range">
+      <summary>选择日期范围</summary>
+      <div class="dau-range-popup">
+        <div class="dau-shortcuts">
+          <button type="button" data-days="7">近7天</button>
+          <button type="button" data-days="30">近30天</button>
+          <button type="button" data-month="0">本月</button>
+          <button type="button" data-month="-1">上月</button>
+        </div>
+        <form class="dau-dates">
+          <label>开始 <input type="date" name="start" required></label>
+          <label>结束 <input type="date" name="end" required></label>
+          <button>应用日期</button>
+          <small role="status"></small>
+        </form>
+      </div>
+    </details>
+    <div class="dau-platforms" role="group" aria-label="平台"></div>`;
+  const picker = dauControls.querySelector('details');
+  const summary = picker.querySelector('summary');
+  const form = picker.querySelector('form');
+  const error = form.querySelector('small');
+  const startInput = form.elements.namedItem('start');
+  const endInput = form.elements.namedItem('end');
+  const setDates = ([start, end]) => {
+    startInput.value = start;
+    endInput.value = end;
+    summary.textContent = start + ' 至 ' + end;
   };
-  const shortcuts = [
-    { text: '近7天', value: () => asDates(dauRange(7)) },
-    { text: '近30天', value: () => asDates(dauRange(30)) },
-    { text: '本月', value: () => asDates(monthRange(0)) },
-    { text: '上月', value: () => asDates(monthRange(-1)) },
-  ];
-  createApp({
-    setup() {
-      return () => [
-        h('div', { class: 'dau-query' }, [
-          h(ElDatePicker, {
-            modelValue: range.value,
-            'onUpdate:modelValue': value => { range.value = value; },
-            onChange: async value => {
-              loading.value = true;
-              try { await queryDau(value || []); }
-              finally { loading.value = false; }
-            },
-            disabled: loading.value,
-            type: 'daterange',
-            valueFormat: 'YYYY-MM-DD',
-            startPlaceholder: '开始日期',
-            endPlaceholder: '结束日期',
-            rangeSeparator: '至',
-            clearable: false,
-            disabledDate: date => new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 10) > dauDate(1),
-            shortcuts,
-            popperClass: 'dau-date-popup',
-            ariaLabel: '日活查询日期范围',
-          }),
-          h(ElCheckboxGroup, {
-          class: 'dau-platforms',
-          ariaLabel: '平台',
-          modelValue: selected.value,
-          min: 1,
-          'onUpdate:modelValue': value => {
-            selected.value = value;
-            dauSelected = value;
-            renderDau();
-          },
-        }, () => dauPlatforms.map(({ key, label, color }) =>
-          h(ElCheckboxButton, { key, value: key, title: key === 'total' ? '三端日活相加' : label }, () => [
-            h('span', { class: 'dau-dot', style: { background: color } }), label,
-          ])
-        )),
-        ]),
-      ];
+  setDates(dauRange(7));
+  picker.addEventListener('toggle', () => {
+    startInput.max = endInput.max = dauDate(1);
+    error.textContent = '';
+  });
+  const apply = async ([start, end]) => {
+    const days = (Date.parse(end) - Date.parse(start)) / 86400000 + 1;
+    if (!(days >= 1 && days <= 90 && end <= dauDate(1))) {
+      error.textContent = '请选择截至昨天、最多 90 天的日期范围。';
+      return;
     }
-  }).mount(dauControls);
+    setDates([start, end]);
+    picker.open = false;
+    picker.inert = true;
+    try { await queryDau([start, end]); }
+    finally { picker.inert = false; }
+  };
+  form.addEventListener('submit', event => {
+    event.preventDefault();
+    void apply([startInput.value, endInput.value]);
+  });
+  for (const button of picker.querySelectorAll('.dau-shortcuts button')) {
+    button.onclick = () => {
+      if (button.dataset.days) return apply(dauRange(Number(button.dataset.days)));
+      const [year, month] = dateInChina.format(new Date()).split('-').map(Number);
+      const offset = Number(button.dataset.month);
+      const monthStart = new Date(Date.UTC(year, month - 1 + offset, 1)).toISOString().slice(0, 10);
+      const monthEnd = offset ? new Date(Date.UTC(year, month - 1, 0)).toISOString().slice(0, 10) : dauDate(1);
+      return apply([monthStart, monthEnd]);
+    };
+  }
+  document.addEventListener('click', event => {
+    if (picker.open && !picker.contains(event.target)) picker.open = false;
+  });
+  picker.addEventListener('keydown', event => {
+    if (event.key === 'Escape' && picker.open) {
+      picker.open = false;
+      summary.focus();
+    }
+  });
+  const platforms = dauControls.querySelector('.dau-platforms');
+  for (const { key, label, color } of dauPlatforms) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.innerHTML = `<span class="dau-dot" style="background:${color}"></span>${label}`;
+    button.setAttribute('aria-pressed', String(dauSelected.includes(key)));
+    button.onclick = () => {
+      const active = dauSelected.includes(key);
+      if (active && dauSelected.length === 1) return;
+      dauSelected = active ? dauSelected.filter(item => item !== key) : [...dauSelected, key];
+      button.setAttribute('aria-pressed', String(!active));
+      renderDau();
+    };
+    platforms.append(button);
+  }
   dauStatus.textContent = '选择日期范围查看日活。';
 }
 
-function loadDauScript(src) {
-  return new Promise((resolve, reject) => {
-    const script = document.createElement('script');
-    script.src = src;
-    script.onload = resolve;
-    script.onerror = reject;
-    document.head.append(script);
-  });
-}
-
-document.querySelector('[data-tab="t2"]').addEventListener('click', async () => {
-  if (dauControls.dataset.loading) return;
-  dauControls.dataset.loading = 'true';
-  try {
-    const elementBase = 'vendor/element-plus-2.11.8';
-    if (!document.getElementById('dau-element-css')) {
-      const css = document.createElement('link');
-      css.id = 'dau-element-css';
-      css.rel = 'stylesheet';
-      css.href = elementBase + '.css';
-      document.head.append(css);
-    }
-    if (!window.Vue) await loadDauScript('vendor/vue-3.5.24.js');
-    if (!window.ElementPlus) await loadDauScript(elementBase + '.js');
-    mountDauControls();
-  } catch {
-    delete dauControls.dataset.loading;
-    dauStatus.textContent = '日期选择器加载失败，请重新打开「产品数据」重试。';
-  }
-});
+mountDauControls();
 
 const prototypeForm = document.getElementById('prototype-upload');
 const prototypeList = document.getElementById('prototype-list');

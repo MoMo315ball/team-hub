@@ -469,3 +469,37 @@ input,select{font-family:inherit;font-size:13px;}
 .dau-date-popup .el-picker-panel__shortcut { height: 28px; line-height: 28px; }
 .dau-pages { display: flex; align-items: center; justify-content: flex-end; gap: 8px; margin-top: 10px; }
 .dau-pages button:disabled { opacity: .45; }
+
+.dau-range { position: relative; }
+.dau-range summary,
+.dau-query button,
+.dau-dates input {
+  border: 1px solid #dce4ee;
+  border-radius: 5px;
+  padding: 6px 9px;
+  background: white;
+  color: #182336;
+  font: inherit;
+}
+.dau-range summary { cursor: pointer; }
+.dau-range-popup {
+  position: absolute;
+  z-index: 5;
+  top: calc(100% + 4px);
+  display: flex;
+  gap: 12px;
+  padding: 10px;
+  width: max-content;
+  max-width: calc(100vw - 56px);
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 8px 28px #17253b22;
+}
+.dau-shortcuts, .dau-dates { display: grid; gap: 6px; align-content: start; }
+.dau-shortcuts { padding-right: 10px; border-right: 1px solid #edf0f4; }
+.dau-shortcuts button { padding: 5px 9px; text-align: left; white-space: nowrap; }
+.dau-dates { min-width: 0; }
+.dau-dates label { display: grid; gap: 3px; }
+.dau-dates input { width: 100%; min-width: 0; }
+.dau-dates small:empty { display: none; }
+.dau-platforms button[aria-pressed="true"] { background: #f0f6ff; border-color: #bfd5f7; }
