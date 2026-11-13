@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Team Hub</title>
-  <link rel="stylesheet" href="styles.css?v=prototype-library">
+  <link rel="stylesheet" href="styles.css?v=prototype-categories">
 </head>
 <body>
   <div class="login" id="login" style="display:none;">
@@ -160,6 +160,8 @@
         <h3>原型库</h3>
         <form id="prototype-upload">
           <label>原型名称 <input name="title" maxlength="80" placeholder="输入原型名称" required></label>
+          <label>分类 <input name="category" list="prototype-category-list" maxlength="40" placeholder="输入或选择分类"></label>
+          <datalist id="prototype-category-list"></datalist>
           <label>HTML 或 ZIP <input name="archive" type="file" accept=".html,.htm,.zip"></label>
           <label>或者选择文件夹 <input name="folder" type="file" webkitdirectory multiple></label>
           <button type="submit">上传原型</button>
@@ -260,6 +262,6 @@
   <script src="xlsx.full.min.js"></script>
   <script src="lunar.min.js"></script>
   <script src="vendor/fflate.js"></script>
-  <script src="app.js?v=prototype-library"></script>
+  <script src="app.js?v=prototype-categories"></script>
 </body>
 </html>

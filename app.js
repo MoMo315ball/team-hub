@@ -391,19 +391,22 @@ async function loadPrototypes() {
   if (account !== currentAccount) return;
   if (error) throw new Error('无法读取原型库，请确认已启用云端存储。');
   prototypeList.replaceChildren();
+  const categories = new Set();
   for (const item of data) {
     if (!item.id) continue;
-    const [id, encoded] = item.name.split('--', 2);
+    const [id, encoded, encodedCategory] = item.name.slice(0, item.name.lastIndexOf('.')).split('--');
     if (!encoded) continue;
     const extension = item.name.endsWith('.zip') ? '.zip' : '.html';
-    const title = decodeURIComponent(encoded.slice(0, -extension.length));
+    const title = decodeURIComponent(encoded);
+    const category = encodedCategory ? decodeURIComponent(encodedCategory) : '';
+    if (category) categories.add(category);
     const row = document.createElement('li');
     const name = document.createElement('strong');
     name.textContent = title;
     const identity = document.createElement('div');
     identity.className = 'prototype-identity';
     const format = document.createElement('span');
-    format.textContent = extension.slice(1).toUpperCase();
+    format.textContent = (category || '未分类') + ' · ' + extension.slice(1).toUpperCase();
     identity.append(name, format);
     row.append(identity);
     const actions = document.createElement('div');
@@ -431,7 +434,7 @@ async function loadPrototypes() {
             if (action === '重命名') {
               const nextTitle = window.prompt('输入新的原型名称', title)?.trim();
               if (!nextTitle || nextTitle === title) return;
-              const encodedTitle = encodePrototypeTitle(nextTitle);
+              const encodedTitle = encodePrototypeTitle(nextTitle, category);
               const { error } = await prototypeBucket.move(key, account.id + '/' + id + '--' + encodedTitle + extension);
               if (error) throw error;
             } else {
@@ -482,13 +485,17 @@ async function loadPrototypes() {
     }
     prototypeList.append(row);
   }
+  document.getElementById('prototype-category-list').replaceChildren(
+    ...[...categories].sort((a, b) => a.localeCompare(b, 'zh-CN')).map(category => new Option(category, category))
+  );
   prototypeCount.textContent = prototypeList.children.length + ' 个';
   prototypeStatus.textContent = prototypeList.children.length ? '' : '还没有原型。';
 }
 
-function encodePrototypeTitle(title) {
-  const encoded = encodeURIComponent(title).replace(/-/g, '%2D');
-  if (title.length > 80 || encoded.length > 230) throw new Error('请缩短原型名称。');
+function encodePrototypeTitle(title, category = '') {
+  const encoded = (category ? [title, category] : [title])
+    .map(value => encodeURIComponent(value).replace(/-/g, '%2D')).join('--');
+  if (title.length > 80 || encoded.length > 230) throw new Error('请缩短原型名称或分类。');
   return encoded;
 }
 
@@ -522,7 +529,7 @@ prototypeForm.addEventListener('submit', async event => {
     if (blob.size > prototypeLimit) throw new Error('单次上传最多 10 MB。');
     if (zip) unpackPrototype(new Uint8Array(await blob.arrayBuffer()));
     if (account !== currentAccount) return;
-    const encoded = encodePrototypeTitle(name);
+    const encoded = encodePrototypeTitle(name, prototypeForm.elements.category.value.trim());
     const key = account.id + '/' + crypto.randomUUID() + '--' + encoded + (zip ? '.zip' : '.html');
     const { error } = await prototypeBucket.upload(key, blob, { contentType: 'application/octet-stream' });
     if (error) throw error;
