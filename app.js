@@ -265,6 +265,185 @@ document.querySelector('[data-tab="t2"]').addEventListener('click', async () => 
   }
 });
 
+const prototypeForm = document.getElementById('prototype-upload');
+const prototypeList = document.getElementById('prototype-list');
+const prototypeStatus = document.getElementById('prototype-status');
+const prototypeDialog = document.getElementById('prototype-preview');
+const prototypeFrame = prototypeDialog.querySelector('iframe');
+const prototypeBucket = supabase.storage.from('teamhub-prototypes');
+const prototypeLimit = 10 * 1024 * 1024;
+const prototypeTypes = {
+  png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif',
+  webp: 'image/webp', svg: 'image/svg+xml', ico: 'image/x-icon',
+  woff: 'font/woff', woff2: 'font/woff2', mp4: 'video/mp4', mp3: 'audio/mpeg'
+};
+prototypeDialog.addEventListener('close', () => { prototypeFrame.srcdoc = ''; });
+
+function unpackPrototype(bytes) {
+  let expanded = 0;
+  const files = fflate.unzipSync(bytes, { filter(entry) {
+    expanded += entry.originalSize;
+    if (expanded > 40 * 1024 * 1024) throw new Error('解压后超过 40 MB。');
+    return !entry.name.endsWith('/') && !entry.name.startsWith('__MACOSX/');
+  } });
+  const entry = Object.keys(files).filter(path => /(^|\/)index\.html$/i.test(path))
+    .sort((a, b) => a.split('/').length - b.split('/').length)[0];
+  if (!entry) throw new Error('文件夹或 ZIP 内需要有 index.html。');
+  return { files, entry };
+}
+
+function prototypeDocument(files, entry) {
+  const doc = new DOMParser().parseFromString(fflate.strFromU8(files[entry]), 'text/html');
+  const base = 'https://prototype.invalid/';
+  function resolve(path, from) {
+    try {
+      const url = new URL(path, new URL(from, base));
+      return url.origin === new URL(base).origin ? decodeURIComponent(url.pathname.slice(1)) : null;
+    } catch { return null; }
+  }
+  function asset(path, from) {
+    const key = resolve(path, from);
+    const mime = key && prototypeTypes[key.split('.').at(-1).toLowerCase()];
+    if (!mime || !Object.hasOwn(files, key)) return null;
+    let binary = '';
+    const bytes = files[key];
+    for (let i = 0; i < bytes.length; i += 8192) binary += String.fromCharCode(...bytes.subarray(i, i + 8192));
+    return 'data:' + mime + ';base64,' + btoa(binary);
+  }
+  function css(text, from) {
+    return text.replace(/url\(\s*(['"]?)(.*?)\1\s*\)/gi, (match, quote, url) => {
+      const data = asset(url, from);
+      return data ? 'url("' + data + '")' : match;
+    });
+  }
+  doc.querySelectorAll('base, meta[http-equiv]').forEach(node => node.remove());
+  doc.querySelectorAll('link[rel="stylesheet"][href]').forEach(link => {
+    const key = resolve(link.getAttribute('href'), entry);
+    if (!Object.hasOwn(files, key)) return;
+    const style = doc.createElement('style');
+    style.textContent = css(fflate.strFromU8(files[key]), key).replace(/<\/style/gi, '<\\/style');
+    link.replaceWith(style);
+  });
+  doc.querySelectorAll('style').forEach(style => { style.textContent = css(style.textContent, entry); });
+  doc.querySelectorAll('script[src]').forEach(script => {
+    const key = resolve(script.getAttribute('src'), entry);
+    if (!Object.hasOwn(files, key)) return;
+    script.setAttribute('src', 'data:text/javascript;charset=utf-8,' + encodeURIComponent(fflate.strFromU8(files[key])));
+  });
+  doc.querySelectorAll('[src]:not(script),[poster],[style]').forEach(node => {
+    for (const attr of ['src', 'poster']) {
+      const value = node.getAttribute(attr);
+      const data = value && asset(value, entry);
+      if (data) node.setAttribute(attr, data);
+    }
+    if (node.hasAttribute('style')) node.setAttribute('style', css(node.getAttribute('style'), entry));
+  });
+  const policy = doc.createElement('meta');
+  policy.httpEquiv = 'Content-Security-Policy';
+  policy.content = "default-src 'none'; script-src 'unsafe-inline' data:; style-src 'unsafe-inline'; img-src data:; font-src data:; media-src data:; form-action 'none'; base-uri 'none'";
+  doc.head.prepend(policy);
+  return '<!doctype html>' + doc.documentElement.outerHTML;
+}
+
+async function loadPrototypes() {
+  const account = currentAccount;
+  if (!account) return;
+  const { data, error } = await prototypeBucket.list(String(account.id), { limit: 100, sortBy: { column: 'created_at', order: 'desc' } });
+  if (account !== currentAccount) return;
+  if (error) throw new Error('无法读取原型库，请确认已启用云端存储。');
+  prototypeList.replaceChildren();
+  for (const item of data) {
+    if (!item.id) continue;
+    const [, encoded] = item.name.split('--', 2);
+    if (!encoded) continue;
+    const extension = item.name.endsWith('.zip') ? '.zip' : '.html';
+    const title = decodeURIComponent(encoded.slice(0, -extension.length));
+    const row = document.createElement('li');
+    const name = document.createElement('strong');
+    name.textContent = title;
+    row.append(name);
+    for (const action of ['在线预览', '下载原文件']) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.textContent = action;
+      button.onclick = async () => {
+        button.disabled = true;
+        try {
+          const { data: blob, error } = await prototypeBucket.download(account.id + '/' + item.name);
+          if (account !== currentAccount) return;
+          if (error) throw error;
+          if (action === '在线预览') {
+            const bytes = new Uint8Array(await blob.arrayBuffer());
+            const project = extension === '.zip' ? unpackPrototype(bytes) : { files: { 'index.html': bytes }, entry: 'index.html' };
+            if (account !== currentAccount) return;
+            prototypeFrame.srcdoc = prototypeDocument(project.files, project.entry);
+            prototypeDialog.showModal();
+          } else {
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = title + extension;
+            link.click();
+            setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+          }
+        } catch (error) { prototypeStatus.textContent = error.message || '操作失败。'; }
+        finally { button.disabled = false; }
+      };
+      row.append(button);
+    }
+    prototypeList.append(row);
+  }
+  prototypeStatus.textContent = prototypeList.children.length ? '' : '还没有原型。';
+}
+
+prototypeForm.addEventListener('submit', async event => {
+  event.preventDefault();
+  const account = currentAccount;
+  if (!account) return;
+  const { title, archive, folder } = prototypeForm.elements;
+  const name = title.value.trim();
+  const file = archive.files[0];
+  const folderFiles = [...folder.files];
+  if (!name || Boolean(file) === Boolean(folderFiles.length)) {
+    prototypeStatus.textContent = '填写名称，再选择一个 HTML、ZIP 或文件夹。';
+    return;
+  }
+  const submit = prototypeForm.querySelector('[type=submit]');
+  submit.disabled = true;
+  prototypeStatus.textContent = '正在上传…';
+  try {
+    let blob = file;
+    const zip = !file || /\.zip$/i.test(file.name);
+    if (file && !/\.(html?|zip)$/i.test(file.name)) throw new Error('请选择 HTML 或 ZIP 文件。');
+    if ((file?.size ?? folderFiles.reduce((sum, item) => sum + item.size, 0)) > prototypeLimit) {
+      throw new Error('单次上传最多 10 MB。');
+    }
+    if (!file) {
+      const files = Object.create(null);
+      for (const item of folderFiles) files[item.webkitRelativePath] = new Uint8Array(await item.arrayBuffer());
+      blob = new Blob([fflate.zipSync(files, { level: 0 })], { type: 'application/zip' });
+    }
+    if (blob.size > prototypeLimit) throw new Error('单次上传最多 10 MB。');
+    if (zip) unpackPrototype(new Uint8Array(await blob.arrayBuffer()));
+    if (account !== currentAccount) return;
+    const encoded = encodeURIComponent(name).replace(/-/g, '%2D');
+    if (encoded.length > 230) throw new Error('请缩短原型名称。');
+    const key = account.id + '/' + crypto.randomUUID() + '--' + encoded + (zip ? '.zip' : '.html');
+    const { error } = await prototypeBucket.upload(key, blob, { contentType: 'application/octet-stream' });
+    if (error) throw error;
+    if (account !== currentAccount) return;
+    prototypeForm.reset();
+    await loadPrototypes();
+    prototypeStatus.textContent = '已保存到云端。';
+  } catch (error) { prototypeStatus.textContent = error.message || '上传失败。'; }
+  finally { submit.disabled = false; }
+});
+
+document.querySelector('[data-tab="prototypes"]').addEventListener('click', () => {
+  prototypeList.replaceChildren();
+  prototypeStatus.textContent = '正在读取原型库…';
+  loadPrototypes().catch(error => { prototypeStatus.textContent = error.message; });
+});
+
 const LINES = [
   { id: 'app', name: '老板食神 APP', subs: [
     { id: 'overall', name: '整体数据' },

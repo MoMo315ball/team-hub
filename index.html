@@ -158,7 +158,18 @@
     <section id="prototypes" class="panel">
       <div class="card">
         <h3>原型库</h3>
-        <p>云端存储接入后，可上传 HTML、文件夹或 ZIP，并在线预览或下载。</p>
+        <form id="prototype-upload">
+          <label>原型名称 <input name="title" maxlength="80" required></label>
+          <label>HTML 或 ZIP <input name="archive" type="file" accept=".html,.htm,.zip"></label>
+          <label>或者选择文件夹 <input name="folder" type="file" webkitdirectory multiple></label>
+          <button type="submit">上传原型</button>
+        </form>
+        <p id="prototype-status" role="status"></p>
+        <ul id="prototype-list"></ul>
+        <dialog id="prototype-preview">
+          <form method="dialog"><button>关闭预览</button></form>
+          <iframe sandbox="allow-scripts" title="原型预览"></iframe>
+        </dialog>
       </div>
     </section>
 
@@ -251,6 +262,7 @@
   <script src="supabase.min.js"></script>
   <script src="xlsx.full.min.js"></script>
   <script src="lunar.min.js"></script>
-  <script src="app.js?v=dau-trend"></script>
+  <script src="vendor/fflate.js"></script>
+  <script src="app.js?v=prototypes"></script>
 </body>
 </html>
