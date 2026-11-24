@@ -394,11 +394,9 @@ async function loadPrototypes() {
   const categories = new Set();
   for (const item of data) {
     if (!item.id) continue;
-    const [id, encoded, encodedCategory] = item.name.slice(0, item.name.lastIndexOf('.')).split('--');
-    if (!encoded) continue;
-    const extension = item.name.endsWith('.zip') ? '.zip' : '.html';
-    const title = decodeURIComponent(encoded);
-    const category = encodedCategory ? decodeURIComponent(encodedCategory) : '';
+    const prototype = parsePrototypeName(item.name);
+    if (!prototype) continue;
+    const { id, title, category, extension } = prototype;
     if (category) categories.add(category);
     const row = document.createElement('li');
     const name = document.createElement('strong');
@@ -434,8 +432,8 @@ async function loadPrototypes() {
             if (action === '重命名') {
               const nextTitle = window.prompt('输入新的原型名称', title)?.trim();
               if (!nextTitle || nextTitle === title) return;
-              const encodedTitle = encodePrototypeTitle(nextTitle, category);
-              const { error } = await prototypeBucket.move(key, account.id + '/' + id + '--' + encodedTitle + extension);
+              const nextName = buildPrototypeName(id, nextTitle, category, extension);
+              const { error } = await prototypeBucket.move(key, account.id + '/' + nextName);
               if (error) throw error;
             } else {
               if (!window.confirm('删除「' + title + '」及其云端原文件？此操作无法撤销。')) return;
@@ -492,11 +490,36 @@ async function loadPrototypes() {
   prototypeStatus.textContent = prototypeList.children.length ? '' : '还没有原型。';
 }
 
-function encodePrototypeTitle(title, category = '') {
-  const encoded = (category ? [title, category] : [title])
-    .map(value => encodeURIComponent(value).replace(/-/g, '%2D')).join('--');
-  if (title.length > 80 || encoded.length > 230) throw new Error('请缩短原型名称或分类。');
-  return encoded;
+function buildPrototypeName(id, title, category, extension) {
+  if (title.length > 80 || category.length > 40) throw new Error('请缩短原型名称或分类。');
+  const bytes = new TextEncoder().encode(JSON.stringify([title, category]));
+  const payload = btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  return 'v1-' + id + '--' + payload + extension;
+}
+
+function parsePrototypeName(filename) {
+  const extension = filename.match(/\.(html|zip)$/)?.[0];
+  if (!extension) return null;
+  const stem = filename.slice(0, -extension.length);
+  const separator = stem.indexOf('--');
+  if (separator < 0) return null;
+  const id = stem.slice(0, separator);
+  const payload = stem.slice(separator + 2);
+  try {
+    if (id.startsWith('v1-')) {
+      const bytes = Uint8Array.from(atob(payload.replace(/-/g, '+').replace(/_/g, '/')), char => char.charCodeAt(0));
+      const metadata = JSON.parse(new TextDecoder().decode(bytes));
+      if (!Array.isArray(metadata) || metadata.length !== 2) return null;
+      const [title, category] = metadata;
+      if (typeof title !== 'string' || !title || typeof category !== 'string') return null;
+      return { id: id.slice(3), title, category, extension };
+    }
+    const [title, category = ''] = payload.split('--');
+    if (!title) return null;
+    return { id, title: decodeURIComponent(title), category: decodeURIComponent(category), extension };
+  } catch {
+    return null;
+  }
 }
 
 prototypeForm.addEventListener('submit', async event => {
@@ -529,8 +552,8 @@ prototypeForm.addEventListener('submit', async event => {
     if (blob.size > prototypeLimit) throw new Error('单次上传最多 10 MB。');
     if (zip) unpackPrototype(new Uint8Array(await blob.arrayBuffer()));
     if (account !== currentAccount) return;
-    const encoded = encodePrototypeTitle(name, prototypeForm.elements.category.value.trim());
-    const key = account.id + '/' + crypto.randomUUID() + '--' + encoded + (zip ? '.zip' : '.html');
+    const filename = buildPrototypeName(crypto.randomUUID(), name, prototypeForm.elements.category.value.trim(), zip ? '.zip' : '.html');
+    const key = account.id + '/' + filename;
     const { error } = await prototypeBucket.upload(key, blob, { contentType: 'application/octet-stream' });
     if (error) throw error;
     if (account !== currentAccount) return;
