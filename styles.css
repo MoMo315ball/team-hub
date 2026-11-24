@@ -525,8 +525,8 @@ input,select{font-family:inherit;font-size:13px;}
 .prototype-library h3 { margin: 0 0 18px; }
 .prototype-actions button, #prototype-retry { padding: 7px 12px; border: 1px solid #dce4ee; border-radius: 6px; background: white; color: #25354b; cursor: pointer; }
 .prototype-actions button:disabled { opacity: .55; cursor: wait; }
-.prototype-list-heading { display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px; margin-top: 22px; }
-.prototype-list-heading h4 { margin: 0; }
+.prototype-list-heading, .prototype-list-primary { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; }
+.prototype-list-primary h3 { margin: 0; font-size: 14px; }
 #prototype-count, #prototype-status { color: #52647a; font-size: 13px; }
 #prototype-status:empty { display: none; }
 #prototype-list { margin: 10px 0 0; display: grid; gap: 12px; }
@@ -554,9 +554,7 @@ input,select{font-family:inherit;font-size:13px;}
 .prototype-edit-actions button[type=submit] { background: #1c273a; color: white; }
 .prototype-edit-actions button:disabled { opacity: .55; cursor: wait; }
 
-.prototype-library-heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; }
-.prototype-library-heading h3 { margin: 0; }
-#prototype-add-open { padding: 8px 13px; border-radius: 7px; background: #1c273a; color: white; cursor: pointer; }
+#prototype-add-open { padding: 6px 10px; white-space: nowrap; border-radius: 7px; background: #1c273a; color: white; cursor: pointer; }
 #prototype-add label span, #prototype-sync { color: #52647a; font-size: 12px; font-weight: 400; }
 #prototype-add fieldset { min-width: 0; margin-top: 12px; border: 0; }
 #prototype-add legend { font-weight: 600; }
