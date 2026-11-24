@@ -384,6 +384,62 @@ function prototypeDocument(files, entry) {
   return '<!doctype html>' + doc.documentElement.outerHTML;
 }
 
+const prototypeEditDialog = document.getElementById('prototype-edit');
+const prototypeEditForm = document.getElementById('prototype-edit-form');
+const prototypeEditError = document.getElementById('prototype-edit-error');
+const prototypeEditCancel = prototypeEditForm.querySelector('[type=button]');
+const prototypeEditSave = prototypeEditForm.querySelector('[type=submit]');
+let prototypeBeingEdited;
+
+function openPrototypeEditor(account, key, prototype) {
+  prototypeBeingEdited = { account, key, ...prototype };
+  prototypeEditForm.elements.title.value = prototype.title;
+  prototypeEditForm.elements.category.value = prototype.category;
+  prototypeEditError.textContent = '';
+  prototypeEditDialog.showModal();
+}
+
+prototypeEditCancel.onclick = () => prototypeEditDialog.close();
+prototypeEditDialog.addEventListener('cancel', event => {
+  if (prototypeEditSave.disabled) event.preventDefault();
+});
+prototypeEditForm.addEventListener('submit', async event => {
+  event.preventDefault();
+  const { account, key, id, extension, title, category } = prototypeBeingEdited;
+  if (account !== currentAccount || prototypeEditSave.disabled) return;
+  const nextTitle = prototypeEditForm.elements.title.value.trim();
+  const nextCategory = prototypeEditForm.elements.category.value.trim();
+  if (!nextTitle) {
+    prototypeEditError.textContent = '请输入原型名称。';
+    prototypeEditForm.elements.title.focus();
+    return;
+  }
+  if (nextTitle === title && nextCategory === category) {
+    prototypeEditDialog.close();
+    return;
+  }
+  for (const field of prototypeEditForm.elements) field.disabled = true;
+  prototypeEditError.textContent = '';
+  try {
+    const filename = buildPrototypeName(id, nextTitle, nextCategory, extension);
+    const { error } = await prototypeBucket.move(key, account.id + '/' + filename);
+    if (error) throw error;
+  } catch (error) {
+    prototypeEditError.textContent = error.message || '保存失败，请重试。';
+    return;
+  } finally {
+    for (const field of prototypeEditForm.elements) field.disabled = false;
+  }
+  prototypeEditDialog.close();
+  if (account !== currentAccount) return;
+  try {
+    await loadPrototypes();
+    if (account === currentAccount) prototypeStatus.textContent = '已保存。';
+  } catch {
+    if (account === currentAccount) prototypeStatus.textContent = '已保存，请刷新页面查看更新。';
+  }
+});
+
 async function loadPrototypes() {
   const account = currentAccount;
   if (!account) return;
@@ -397,7 +453,7 @@ async function loadPrototypes() {
     if (!item.id) continue;
     const prototype = parsePrototypeName(item.name);
     if (!prototype) continue;
-    const { id, title, category, extension } = prototype;
+    const { title, category, extension } = prototype;
     const row = document.createElement('li');
     const name = document.createElement('strong');
     name.textContent = title;
@@ -411,11 +467,15 @@ async function loadPrototypes() {
     actions.className = 'prototype-actions';
     row.append(actions);
     const key = account.id + '/' + item.name;
-    for (const action of ['在线预览', '下载原文件', '重命名', '删除']) {
+    for (const action of ['在线预览', '下载原文件', '编辑', '删除']) {
       const button = document.createElement('button');
       button.type = 'button';
       button.textContent = action;
       button.onclick = async () => {
+        if (action === '编辑') {
+          openPrototypeEditor(account, key, prototype);
+          return;
+        }
         let preview;
         if (action === '在线预览') {
           preview = window.open('about:blank', '_blank');
@@ -428,22 +488,14 @@ async function loadPrototypes() {
         }
         for (const control of actions.children) control.disabled = true;
         try {
-          if (action === '重命名' || action === '删除') {
-            if (action === '重命名') {
-              const nextTitle = window.prompt('输入新的原型名称', title)?.trim();
-              if (!nextTitle || nextTitle === title) return;
-              const nextName = buildPrototypeName(id, nextTitle, category, extension);
-              const { error } = await prototypeBucket.move(key, account.id + '/' + nextName);
-              if (error) throw error;
-            } else {
-              if (!window.confirm('删除「' + title + '」及其云端原文件？此操作无法撤销。')) return;
-              const { data: removed, error } = await prototypeBucket.remove([key]);
-              if (error) throw error;
-              if (!removed?.length) throw new Error('未能删除原型，请检查云端存储权限。');
-            }
+          if (action === '删除') {
+            if (!window.confirm('删除「' + title + '」及其云端原文件？此操作无法撤销。')) return;
+            const { data: removed, error } = await prototypeBucket.remove([key]);
+            if (error) throw error;
+            if (!removed?.length) throw new Error('未能删除原型，请检查云端存储权限。');
             if (account !== currentAccount) return;
             await loadPrototypes();
-            if (account === currentAccount) prototypeStatus.textContent = action === '删除' ? '已删除。' : '已重命名。';
+            if (account === currentAccount) prototypeStatus.textContent = '已删除。';
             return;
           }
           const { data: blob, error } = await prototypeBucket.download(key);

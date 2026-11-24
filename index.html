@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Team Hub</title>
-  <link rel="stylesheet" href="styles.css?v=prototype-groups">
+  <link rel="stylesheet" href="styles.css?v=prototype-edit">
 </head>
 <body>
   <div class="login" id="login" style="display:none;">
@@ -169,6 +169,19 @@
         <div class="prototype-list-heading"><h4>已上传原型</h4><span id="prototype-count"></span></div>
         <p id="prototype-status" role="status"></p>
         <div id="prototype-list"></div>
+        <dialog id="prototype-edit" aria-labelledby="prototype-edit-heading">
+          <form id="prototype-edit-form">
+            <h3 id="prototype-edit-heading">编辑原型</h3>
+            <label>原型名称<input name="title" maxlength="80" required></label>
+            <label>分类<input name="category" list="prototype-category-list" maxlength="40" placeholder="输入或选择分类"></label>
+            <p class="prototype-edit-hint">可选已有分类，也可输入新分类。留空归入「未分类」。</p>
+            <p id="prototype-edit-error" role="alert"></p>
+            <div class="prototype-edit-actions">
+              <button type="button">取消</button>
+              <button type="submit">保存</button>
+            </div>
+          </form>
+        </dialog>
       </div>
     </section>
 
@@ -262,6 +275,6 @@
   <script src="xlsx.full.min.js"></script>
   <script src="lunar.min.js"></script>
   <script src="vendor/fflate.js"></script>
-  <script src="app.js?v=prototype-groups"></script>
+  <script src="app.js?v=prototype-edit"></script>
 </body>
 </html>
