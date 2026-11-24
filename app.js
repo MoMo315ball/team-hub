@@ -391,20 +391,20 @@ async function loadPrototypes() {
   if (account !== currentAccount) return;
   if (error) throw new Error('无法读取原型库，请确认已启用云端存储。');
   prototypeList.replaceChildren();
-  const categories = new Set();
+  const groups = new Map();
+  let count = 0;
   for (const item of data) {
     if (!item.id) continue;
     const prototype = parsePrototypeName(item.name);
     if (!prototype) continue;
     const { id, title, category, extension } = prototype;
-    if (category) categories.add(category);
     const row = document.createElement('li');
     const name = document.createElement('strong');
     name.textContent = title;
     const identity = document.createElement('div');
     identity.className = 'prototype-identity';
     const format = document.createElement('span');
-    format.textContent = (category || '未分类') + ' · ' + extension.slice(1).toUpperCase();
+    format.textContent = extension.slice(1).toUpperCase();
     identity.append(name, format);
     row.append(identity);
     const actions = document.createElement('div');
@@ -481,13 +481,33 @@ async function loadPrototypes() {
       button.className = action === '删除' ? 'prototype-delete' : action === '在线预览' ? 'prototype-open' : '';
       actions.append(button);
     }
-    prototypeList.append(row);
+    if (!groups.has(category)) groups.set(category, []);
+    groups.get(category).push(row);
+    count++;
+  }
+  const categories = [...groups.keys()].filter(Boolean).sort((a, b) => a.localeCompare(b, 'zh-CN'));
+  const groupOrder = groups.has('') ? [...categories, ''] : categories;
+  for (const category of groupOrder) {
+    const rows = groups.get(category);
+    const group = document.createElement('details');
+    group.className = 'prototype-group';
+    group.open = true;
+    const summary = document.createElement('summary');
+    const heading = document.createElement('strong');
+    heading.textContent = category || '未分类';
+    const size = document.createElement('span');
+    size.textContent = rows.length + ' 个原型';
+    summary.append(heading, size);
+    const list = document.createElement('ul');
+    list.append(...rows);
+    group.append(summary, list);
+    prototypeList.append(group);
   }
   document.getElementById('prototype-category-list').replaceChildren(
-    ...[...categories].sort((a, b) => a.localeCompare(b, 'zh-CN')).map(category => new Option(category, category))
+    ...categories.map(category => new Option(category, category))
   );
-  prototypeCount.textContent = prototypeList.children.length + ' 个';
-  prototypeStatus.textContent = prototypeList.children.length ? '' : '还没有原型。';
+  prototypeCount.textContent = count + ' 个';
+  prototypeStatus.textContent = count ? '' : '还没有原型。';
 }
 
 function buildPrototypeName(id, title, category, extension) {
