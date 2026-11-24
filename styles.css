@@ -547,7 +547,7 @@ input,select{font-family:inherit;font-size:13px;}
 .prototype-actions .prototype-open { background: #eff5ff; border-color: #c5d8fa; color: #17469a; }
 .prototype-actions .prototype-delete { color: #a12626; }
 
-#prototype-edit { box-sizing: border-box; width: min(450px, calc(100% - 32px)); padding: 22px; border: 1px solid #dfe6ef; border-radius: 14px; color: #192438; }
+#prototype-edit { position: fixed; inset: 0; margin: auto; box-sizing: border-box; width: min(450px, calc(100% - 32px)); max-height: calc(100% - 32px); overflow: auto; padding: 22px; border: 1px solid #dfe6ef; border-radius: 14px; color: #192438; }
 #prototype-edit::backdrop { background: rgb(19 32 56 / 35%); }
 #prototype-edit h3 { margin: 0 0 16px; }
 #prototype-edit label { display: grid; gap: 6px; margin-top: 12px; font-weight: 600; }
