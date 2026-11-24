@@ -527,6 +527,7 @@ input,select{font-family:inherit;font-size:13px;}
 .prototype-actions button:disabled { opacity: .55; cursor: wait; }
 .prototype-list-heading, .prototype-list-primary { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; }
 .prototype-list-primary h3 { margin: 0; font-size: 14px; }
+.prototype-list-sync { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 6px; margin-inline-start: auto; text-align: end; }
 #prototype-count, #prototype-status { color: #52647a; font-size: 13px; }
 #prototype-status:empty { display: none; }
 #prototype-list { margin: 10px 0 0; display: grid; gap: 12px; }
