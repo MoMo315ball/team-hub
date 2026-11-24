@@ -420,8 +420,9 @@ prototypeEditForm.addEventListener('submit', async event => {
   }
   for (const field of prototypeEditForm.elements) field.disabled = true;
   prototypeEditError.textContent = '';
+  let filename;
   try {
-    const filename = buildPrototypeName(id, nextTitle, nextCategory, extension);
+    filename = buildPrototypeName(id, nextTitle, nextCategory, extension);
     const { error } = await prototypeBucket.move(key, account.id + '/' + filename);
     if (error) throw error;
   } catch (error) {
@@ -432,25 +433,80 @@ prototypeEditForm.addEventListener('submit', async event => {
   }
   prototypeEditDialog.close();
   if (account !== currentAccount) return;
-  try {
-    await loadPrototypes();
-    if (account === currentAccount) prototypeStatus.textContent = '已保存。';
-  } catch {
-    if (account === currentAccount) prototypeStatus.textContent = '已保存，请刷新页面查看更新。';
-  }
+  updatePrototypeCache(account, key.slice(key.indexOf('/') + 1), filename);
+  await loadPrototypes();
+  if (account === currentAccount) prototypeStatus.textContent = '已保存。';
 });
+
+const prototypeSync = document.getElementById('prototype-sync');
+const prototypeLoading = document.getElementById('prototype-loading');
+const prototypeRetry = document.getElementById('prototype-retry');
+let prototypeRequest = 0;
+let prototypeSnapshot = null;
+let prototypeSessionPending = false;
+
+function prototypeCacheKey(account) {
+  return 'teamhub_prototypes_v1:' + account.id;
+}
+
+function readPrototypeCache(account) {
+  if (prototypeSnapshot?.account === account) return prototypeSnapshot.items;
+  try {
+    const items = JSON.parse(localStorage.getItem(prototypeCacheKey(account)));
+    return Array.isArray(items) ? items.filter(item => typeof item?.name === 'string') : null;
+  } catch { return null; }
+}
+
+function writePrototypeCache(account, items) {
+  prototypeSnapshot = { account, items };
+  try { localStorage.setItem(prototypeCacheKey(account), JSON.stringify(items)); } catch {}
+}
+
+function updatePrototypeCache(account, previousName, nextName) {
+  const cached = readPrototypeCache(account);
+  if (cached === null) return;
+  const items = cached.filter(item => item.name !== previousName && item.name !== nextName);
+  if (nextName) items.unshift({ name: nextName });
+  writePrototypeCache(account, items);
+  renderPrototypes(account, items);
+}
 
 async function loadPrototypes() {
   const account = currentAccount;
-  if (!account) return;
-  const { data, error } = await prototypeBucket.list(String(account.id), { limit: 100, sortBy: { column: 'created_at', order: 'desc' } });
-  if (account !== currentAccount) return;
-  if (error) throw new Error('无法读取原型库，请确认已启用云端存储。');
+  if (account?.id == null) return false;
+  const request = ++prototypeRequest;
+  const cached = readPrototypeCache(account);
+  prototypeRetry.hidden = true;
+  prototypeLoading.hidden = cached !== null;
+  prototypeSync.textContent = cached === null ? '正在读取原型库…' : '同步中…';
+  if (cached !== null && prototypeSnapshot?.account !== account) renderPrototypes(account, cached);
+  if (prototypeSessionPending) return false;
+  try {
+    const { data, error } = await prototypeBucket.list(String(account.id), { limit: 100, sortBy: { column: 'created_at', order: 'desc' } });
+    if (account !== currentAccount || request !== prototypeRequest) return false;
+    if (error) throw error;
+    const items = (data || []).filter(item => item.id && parsePrototypeName(item.name)).map(item => ({ name: item.name }));
+    writePrototypeCache(account, items);
+    renderPrototypes(account, items);
+    prototypeLoading.hidden = true;
+    prototypeSync.textContent = '';
+    return true;
+  } catch {
+    if (account === currentAccount && request === prototypeRequest) {
+      prototypeSync.textContent = cached === null ? '暂时无法读取原型库' : '同步失败，显示上次结果';
+      prototypeLoading.hidden = true;
+      prototypeRetry.hidden = false;
+    }
+    return false;
+  }
+}
+
+function renderPrototypes(account, data) {
+  const collapsed = new Set([...prototypeList.querySelectorAll('details:not([open])')].map(group => group.dataset.category));
   prototypeList.replaceChildren();
   const groups = new Map();
   let count = 0;
   for (const item of data) {
-    if (!item.id) continue;
     const prototype = parsePrototypeName(item.name);
     if (!prototype) continue;
     const { title, category, extension } = prototype;
@@ -471,7 +527,9 @@ async function loadPrototypes() {
       const button = document.createElement('button');
       button.type = 'button';
       button.textContent = action;
+      button.disabled = prototypeSessionPending;
       button.onclick = async () => {
+        if (prototypeSessionPending || currentAccount !== account) return;
         if (action === '编辑') {
           openPrototypeEditor(account, key, prototype);
           return;
@@ -494,6 +552,7 @@ async function loadPrototypes() {
             if (error) throw error;
             if (!removed?.length) throw new Error('未能删除原型，请检查云端存储权限。');
             if (account !== currentAccount) return;
+            updatePrototypeCache(account, item.name);
             await loadPrototypes();
             if (account === currentAccount) prototypeStatus.textContent = '已删除。';
             return;
@@ -543,7 +602,8 @@ async function loadPrototypes() {
     const rows = groups.get(category);
     const group = document.createElement('details');
     group.className = 'prototype-group';
-    group.open = true;
+    group.dataset.category = category;
+    group.open = !collapsed.has(category);
     const summary = document.createElement('summary');
     const heading = document.createElement('strong');
     heading.textContent = category || '未分类';
@@ -594,21 +654,73 @@ function parsePrototypeName(filename) {
   }
 }
 
+const prototypeAddDialog = document.getElementById('prototype-add');
+const prototypeAddOpen = document.getElementById('prototype-add-open');
+const prototypeAddCancel = document.getElementById('prototype-add-cancel');
+const prototypeAddStatus = document.getElementById('prototype-add-status');
+const prototypeAddSubmit = prototypeForm.querySelector('[type=submit]');
+const prototypeSelection = document.getElementById('prototype-selected-file');
+const prototypePickerButtons = [...prototypeForm.querySelectorAll('[data-file-picker]')];
+let prototypeSuggestedTitle = '';
+let prototypeUploading = false;
+
+function refreshPrototypeUploadForm() {
+  const { title, archive, folder } = prototypeForm.elements;
+  prototypeAddSubmit.disabled = prototypeUploading || !title.value.trim() || !(archive.files.length || folder.files.length);
+}
+
+prototypeAddOpen.onclick = () => {
+  if (currentAccount?.id == null || prototypeSessionPending) return;
+  prototypeForm.reset();
+  prototypeSuggestedTitle = '';
+  prototypeSelection.hidden = true;
+  prototypeAddStatus.textContent = '';
+  refreshPrototypeUploadForm();
+  prototypeAddDialog.showModal();
+};
+prototypeAddCancel.onclick = () => prototypeAddDialog.close();
+prototypeAddDialog.addEventListener('cancel', event => {
+  if (prototypeUploading) event.preventDefault();
+});
+prototypeForm.elements.title.addEventListener('input', refreshPrototypeUploadForm);
+for (const button of prototypePickerButtons) {
+  const input = prototypeForm.elements[button.dataset.filePicker];
+  button.onclick = () => input.click();
+  input.addEventListener('change', () => {
+    const { title, archive, folder } = prototypeForm.elements;
+    if (input.files.length) {
+      const isFolder = input === folder;
+      (isFolder ? archive : folder).value = '';
+      const file = input.files[0];
+      const label = isFolder ? file.webkitRelativePath.split('/')[0] || file.name : file.name;
+      const suggestion = (isFolder ? label : label.replace(/\.(html?|zip)$/i, '')).slice(0, 80);
+      if (!title.value.trim() || title.value === prototypeSuggestedTitle) title.value = suggestion;
+      prototypeSuggestedTitle = suggestion;
+      prototypeSelection.textContent = isFolder ? label + ' · ' + input.files.length + ' 个文件' : label;
+    }
+    prototypeSelection.hidden = !(archive.files.length || folder.files.length);
+    prototypeAddStatus.textContent = '';
+    refreshPrototypeUploadForm();
+  });
+}
+
 prototypeForm.addEventListener('submit', async event => {
   event.preventDefault();
   const account = currentAccount;
-  if (!account) return;
+  if (account?.id == null || prototypeSessionPending || prototypeUploading) return;
   const { title, archive, folder } = prototypeForm.elements;
   const name = title.value.trim();
+  const category = prototypeForm.elements.category.value.trim();
   const file = archive.files[0];
   const folderFiles = [...folder.files];
   if (!name || Boolean(file) === Boolean(folderFiles.length)) {
-    prototypeStatus.textContent = '填写名称，再选择一个 HTML、ZIP 或文件夹。';
+    prototypeAddStatus.textContent = '填写名称，再选择一个 HTML、ZIP 或文件夹。';
     return;
   }
-  const submit = prototypeForm.querySelector('[type=submit]');
-  submit.disabled = true;
-  prototypeStatus.textContent = '正在上传…';
+  prototypeUploading = true;
+  for (const field of prototypeForm.elements) field.disabled = true;
+  prototypeAddStatus.textContent = '正在上传…';
+  let filename;
   try {
     let blob = file;
     const zip = !file || /\.zip$/i.test(file.name);
@@ -624,24 +736,26 @@ prototypeForm.addEventListener('submit', async event => {
     if (blob.size > prototypeLimit) throw new Error('单次上传最多 10 MB。');
     if (zip) unpackPrototype(new Uint8Array(await blob.arrayBuffer()));
     if (account !== currentAccount) return;
-    const filename = buildPrototypeName(crypto.randomUUID(), name, prototypeForm.elements.category.value.trim(), zip ? '.zip' : '.html');
+    filename = buildPrototypeName(crypto.randomUUID(), name, category, zip ? '.zip' : '.html');
     const key = account.id + '/' + filename;
     const { error } = await prototypeBucket.upload(key, blob, { contentType: 'application/octet-stream' });
     if (error) throw error;
     if (account !== currentAccount) return;
-    prototypeForm.reset();
-    await loadPrototypes();
-    prototypeStatus.textContent = '已保存到云端。';
-  } catch (error) { prototypeStatus.textContent = error.message || '上传失败。'; }
-  finally { submit.disabled = false; }
+  } catch (error) {
+    prototypeAddStatus.textContent = error.message || '上传失败。';
+    return;
+  } finally {
+    prototypeUploading = false;
+    for (const field of prototypeForm.elements) field.disabled = false;
+    refreshPrototypeUploadForm();
+  }
+  prototypeAddDialog.close();
+  updatePrototypeCache(account, null, filename);
+  await loadPrototypes();
+  if (account === currentAccount) prototypeStatus.textContent = '已保存到云端。';
 });
 
-document.querySelector('[data-tab="prototypes"]').addEventListener('click', () => {
-  prototypeList.replaceChildren();
-  prototypeCount.textContent = '';
-  prototypeStatus.textContent = '正在读取原型库…';
-  loadPrototypes().catch(error => { prototypeStatus.textContent = error.message; });
-});
+prototypeRetry.onclick = () => loadPrototypes();
 
 const LINES = [
   { id: 'app', name: '老板食神 APP', subs: [
@@ -825,12 +939,32 @@ document.getElementById('u-out').onclick = async () => {
   dauStatus.textContent = '选择日期范围查看日活。';
   localStorage.removeItem('teamhub_token');
   localStorage.removeItem('teamhub_account');
+  if (currentAccount?.id != null) {
+    try {
+      localStorage.removeItem(prototypeCacheKey(currentAccount));
+      sessionStorage.removeItem(prototypeCacheKey(currentAccount) + ':tab');
+    } catch {}
+  }
   currentAccount = null;
   resetState();
   showLogin();
 };
 
+function resetPrototypeList() {
+  prototypeRequest++;
+  prototypeSnapshot = null;
+  prototypeList.replaceChildren();
+  prototypeCount.textContent = '';
+  prototypeStatus.textContent = '';
+  prototypeSync.textContent = '';
+  prototypeRetry.hidden = true;
+  prototypeLoading.hidden = true;
+  document.getElementById('prototype-category-list').replaceChildren();
+  goTab('t1');
+}
+
 function resetState() {
+  resetPrototypeList();
   currentAccount = null;
   membersById = {};
   restDays = new Set();
@@ -2676,6 +2810,10 @@ function renderChart(mod, overrideFilter) {
 function goTab(t) {
   document.querySelectorAll('.tab').forEach(x => x.classList.toggle('active', x.dataset.tab === t));
   document.querySelectorAll('.panel').forEach(p => p.classList.toggle('active', p.id === t));
+  if (t === 'prototypes') void loadPrototypes();
+  if (currentAccount?.id != null) {
+    try { sessionStorage.setItem(prototypeCacheKey(currentAccount) + ':tab', t); } catch {}
+  }
 }
 document.querySelectorAll('.tab').forEach(t => t.onclick = () => goTab(t.dataset.tab));
 
@@ -2697,16 +2835,36 @@ document.addEventListener('click', e => {
   try { savedAccount = JSON.parse(localStorage.getItem('teamhub_account')); } catch (e) {}
   if (sessionToken) {
     currentAccount = savedAccount || { name: '加载中', color: '#0071e3', is_admin: false };
+    prototypeSessionPending = true;
+    prototypeAddOpen.disabled = true;
     renderAppShell();
+    let restorePrototypes = false;
+    try { restorePrototypes = savedAccount?.id != null && sessionStorage.getItem(prototypeCacheKey(savedAccount) + ':tab') === 'prototypes'; } catch {}
+    if (restorePrototypes) goTab('prototypes');
     if (loadSnapshot()) renderAll();
     const { data, error } = await supabase.rpc('get_session', { p_token: sessionToken });
     if (!error && data && data.account) {
+      const accountChanged = savedAccount?.id !== data.account.id;
+      if (accountChanged) {
+        prototypeList.replaceChildren();
+        prototypeCount.textContent = '';
+        document.getElementById('prototype-category-list').replaceChildren();
+      }
       currentAccount = data.account;
+      prototypeSessionPending = false;
+      prototypeAddOpen.disabled = false;
+      if (document.getElementById('prototypes').classList.contains('active')) goTab('prototypes');
       localStorage.setItem('teamhub_account', JSON.stringify(data.account));
       renderHeader();
       await loadAppData();
       return;
     }
+    prototypeSessionPending = false;
+    prototypeAddOpen.disabled = false;
+    if (savedAccount?.id != null) {
+      try { localStorage.removeItem(prototypeCacheKey(savedAccount)); } catch {}
+    }
+    resetPrototypeList();
     sessionToken = null;
   dauRows = [];
   renderDau();
