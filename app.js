@@ -311,7 +311,7 @@ const prototypeList = document.getElementById('prototype-list');
 const prototypeStatus = document.getElementById('prototype-status');
 const prototypeCount = document.getElementById('prototype-count');
 const prototypeBucket = supabase.storage.from('teamhub-prototypes');
-const prototypeLimit = 10 * 1024 * 1024;
+const prototypeLimit = 1 * 1024 * 1024;
 const prototypeTypes = {
   png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif',
   webp: 'image/webp', svg: 'image/svg+xml', ico: 'image/x-icon',
@@ -516,14 +516,16 @@ function renderPrototypes(account, data) {
     const identity = document.createElement('div');
     identity.className = 'prototype-identity';
     const format = document.createElement('span');
-    format.textContent = extension.slice(1).toUpperCase();
+    const isLink = extension === '.link';
+    format.textContent = isLink ? '链接' : extension.slice(1).toUpperCase();
     identity.append(name, format);
     row.append(identity);
     const actions = document.createElement('div');
     actions.className = 'prototype-actions';
     row.append(actions);
     const key = account.id + '/' + item.name;
-    for (const action of ['在线预览', '下载原文件', '编辑', '删除']) {
+    const rowActions = isLink ? ['打开链接', '编辑', '删除'] : ['在线预览', '下载原文件', '编辑', '删除'];
+    for (const action of rowActions) {
       const button = document.createElement('button');
       button.type = 'button';
       button.textContent = action;
@@ -535,7 +537,7 @@ function renderPrototypes(account, data) {
           return;
         }
         let preview;
-        if (action === '在线预览') {
+        if (action === '在线预览' || action === '打开链接') {
           preview = window.open('about:blank', '_blank');
           if (!preview) {
             prototypeStatus.textContent = '请允许浏览器打开新标签页。';
@@ -547,7 +549,7 @@ function renderPrototypes(account, data) {
         for (const control of actions.children) control.disabled = true;
         try {
           if (action === '删除') {
-            if (!window.confirm('删除「' + title + '」及其云端原文件？此操作无法撤销。')) return;
+            if (!window.confirm('删除「' + title + '」' + (isLink ? '的链接记录' : '及其云端原文件') + '？此操作无法撤销。')) return;
             const { data: removed, error } = await prototypeBucket.remove([key]);
             if (error) throw error;
             if (!removed?.length) throw new Error('未能删除原型，请检查云端存储权限。');
@@ -560,7 +562,10 @@ function renderPrototypes(account, data) {
           const { data: blob, error } = await prototypeBucket.download(key);
           if (account !== currentAccount) return;
           if (error) throw error;
-          if (action === '在线预览') {
+          if (action === '打开链接') {
+            const url = validatedPrototypeUrl(await blob.text());
+            if (account === currentAccount && !preview.closed) preview.location.replace(url);
+          } else if (action === '在线预览') {
             const bytes = new Uint8Array(await blob.arrayBuffer());
             const project = extension === '.zip' ? unpackPrototype(bytes) : { files: { 'index.html': bytes }, entry: 'index.html' };
             if (account !== currentAccount) return;
@@ -589,7 +594,7 @@ function renderPrototypes(account, data) {
           for (const control of actions.children) control.disabled = false;
         }
       };
-      button.className = action === '删除' ? 'prototype-delete' : action === '在线预览' ? 'prototype-open' : '';
+      button.className = action === '删除' ? 'prototype-delete' : ['在线预览', '打开链接'].includes(action) ? 'prototype-open' : '';
       actions.append(button);
     }
     if (!groups.has(category)) groups.set(category, []);
@@ -630,7 +635,7 @@ function buildPrototypeName(id, title, category, extension) {
 }
 
 function parsePrototypeName(filename) {
-  const extension = filename.match(/\.(html|zip)$/)?.[0];
+  const extension = filename.match(/\.(html|zip|link)$/)?.[0];
   if (!extension) return null;
   const stem = filename.slice(0, -extension.length);
   const separator = stem.indexOf('--');
@@ -659,6 +664,9 @@ const prototypeAddOpen = document.getElementById('prototype-add-open');
 const prototypeAddCancel = document.getElementById('prototype-add-cancel');
 const prototypeAddStatus = document.getElementById('prototype-add-status');
 const prototypeAddSubmit = prototypeForm.querySelector('[type=submit]');
+const prototypeLinkField = document.getElementById('prototype-link-field');
+const prototypeAttachmentFields = document.getElementById('prototype-attachment-fields');
+const prototypeUseLink = document.getElementById('prototype-use-link');
 const prototypeSelection = document.getElementById('prototype-selected-file');
 const prototypeSizeError = document.getElementById('prototype-size-error');
 const prototypePickerButtons = [...prototypeForm.querySelectorAll('[data-file-picker]')];
@@ -675,11 +683,28 @@ function formatPrototypeUploadSize(bytes) {
   return (bytes / 1024 ** 2).toFixed(2) + ' MB';
 }
 
+function validatedPrototypeUrl(value) {
+  let url;
+  try { url = new URL(value.trim()); } catch {}
+  if (!url || !['http:', 'https:'].includes(url.protocol) || url.username || url.password || value.length > 8192) {
+    throw new Error('请输入有效的 HTTP 或 HTTPS 链接。');
+  }
+  return url.href;
+}
+
 function refreshPrototypeUploadForm() {
-  const { title, archive, folder } = prototypeForm.elements;
-  const tooLarge = prototypeUploadSize(archive.files[0], folder.files) > prototypeLimit;
-  prototypeSizeError.textContent = tooLarge ? '所选内容超过 10 MB，请更换文件或压缩后再上传。' : '';
-  prototypeAddSubmit.disabled = prototypeUploading || tooLarge || !title.value.trim() || !(archive.files.length || folder.files.length);
+  const { title, archive, folder, mode, prototypeUrl } = prototypeForm.elements;
+  const isLink = mode.value === 'link';
+  prototypeLinkField.hidden = !isLink;
+  prototypeAttachmentFields.hidden = isLink;
+  prototypeUrl.disabled = !isLink || prototypeUploading;
+  title.placeholder = isLink ? '输入原型名称' : '选好文件后自动填入，可修改';
+  const tooLarge = !isLink && prototypeUploadSize(archive.files[0], folder.files) > prototypeLimit;
+  prototypeSizeError.textContent = tooLarge ? '所选内容超过 1 MB，请更换文件或改用链接。' : '';
+  prototypeUseLink.hidden = !tooLarge;
+  prototypeAddSubmit.textContent = isLink ? '保存链接' : '上传原型';
+  prototypeAddSubmit.disabled = prototypeUploading || tooLarge || !title.value.trim() ||
+    (isLink ? !prototypeUrl.value.trim() : !(archive.files.length || folder.files.length));
 }
 
 prototypeAddOpen.onclick = () => {
@@ -695,6 +720,18 @@ prototypeAddCancel.onclick = () => prototypeAddDialog.close();
 prototypeAddDialog.addEventListener('cancel', event => {
   if (prototypeUploading) event.preventDefault();
 });
+prototypeUseLink.onclick = () => {
+  prototypeForm.elements.mode.value = 'link';
+  prototypeAddStatus.textContent = '';
+  refreshPrototypeUploadForm();
+  prototypeForm.elements.prototypeUrl.focus();
+};
+prototypeForm.addEventListener('change', event => {
+  if (event.target.name !== 'mode') return;
+  prototypeAddStatus.textContent = '';
+  refreshPrototypeUploadForm();
+});
+prototypeForm.elements.prototypeUrl.addEventListener('input', refreshPrototypeUploadForm);
 prototypeForm.elements.title.addEventListener('input', refreshPrototypeUploadForm);
 for (const button of prototypePickerButtons) {
   const input = prototypeForm.elements[button.dataset.filePicker];
@@ -718,39 +755,46 @@ for (const button of prototypePickerButtons) {
   });
 }
 
+async function preparePrototypeUpload(file, folderFiles) {
+  let blob = file;
+  const zip = !file || /\.zip$/i.test(file.name);
+  if (file && !/\.(html?|zip)$/i.test(file.name)) throw new Error('请选择 HTML 或 ZIP 文件。');
+  if (prototypeUploadSize(file, folderFiles) > prototypeLimit) throw new Error('单次上传最多 1 MB。');
+  if (!file) {
+    const files = Object.create(null);
+    for (const item of folderFiles) files[item.webkitRelativePath] = new Uint8Array(await item.arrayBuffer());
+    blob = new Blob([fflate.zipSync(files, { level: 0 })], { type: 'application/zip' });
+  }
+  if (blob.size > prototypeLimit) throw new Error('打包后超过 1 MB，请精简文件或改用链接。');
+  if (zip) unpackPrototype(new Uint8Array(await blob.arrayBuffer()));
+  return { blob, extension: zip ? '.zip' : '.html' };
+}
+
 prototypeForm.addEventListener('submit', async event => {
   event.preventDefault();
   const account = currentAccount;
   if (account?.id == null || prototypeSessionPending || prototypeUploading) return;
-  const { title, archive, folder } = prototypeForm.elements;
+  const { title, archive, folder, mode, prototypeUrl } = prototypeForm.elements;
   const name = title.value.trim();
   const category = prototypeForm.elements.category.value.trim();
+  const isLink = mode.value === 'link';
+  const url = prototypeUrl.value;
   const file = archive.files[0];
   const folderFiles = [...folder.files];
-  if (!name || Boolean(file) === Boolean(folderFiles.length)) {
-    prototypeAddStatus.textContent = '填写名称，再选择一个 HTML、ZIP 或文件夹。';
+  if (!name || (!isLink && Boolean(file) === Boolean(folderFiles.length))) {
+    prototypeAddStatus.textContent = '填写名称，并选择要添加的内容。';
     return;
   }
   prototypeUploading = true;
   for (const field of prototypeForm.elements) field.disabled = true;
-  prototypeAddStatus.textContent = '正在上传…';
+  prototypeAddStatus.textContent = isLink ? '正在保存…' : '正在上传…';
   let filename;
   try {
-    let blob = file;
-    const zip = !file || /\.zip$/i.test(file.name);
-    if (file && !/\.(html?|zip)$/i.test(file.name)) throw new Error('请选择 HTML 或 ZIP 文件。');
-    if (prototypeUploadSize(file, folderFiles) > prototypeLimit) {
-      throw new Error('单次上传最多 10 MB。');
-    }
-    if (!file) {
-      const files = Object.create(null);
-      for (const item of folderFiles) files[item.webkitRelativePath] = new Uint8Array(await item.arrayBuffer());
-      blob = new Blob([fflate.zipSync(files, { level: 0 })], { type: 'application/zip' });
-    }
-    if (blob.size > prototypeLimit) throw new Error('单次上传最多 10 MB。');
-    if (zip) unpackPrototype(new Uint8Array(await blob.arrayBuffer()));
+    const { blob, extension } = isLink
+      ? { blob: new Blob([validatedPrototypeUrl(url)]), extension: '.link' }
+      : await preparePrototypeUpload(file, folderFiles);
     if (account !== currentAccount) return;
-    filename = buildPrototypeName(crypto.randomUUID(), name, category, zip ? '.zip' : '.html');
+    filename = buildPrototypeName(crypto.randomUUID(), name, category, extension);
     const key = account.id + '/' + filename;
     const { error } = await prototypeBucket.upload(key, blob, { contentType: 'application/octet-stream' });
     if (error) throw error;

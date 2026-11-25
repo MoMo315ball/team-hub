@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Team Hub</title>
-  <link rel="stylesheet" href="styles.css?v=prototype-upload-size">
+  <link rel="stylesheet" href="styles.css?v=prototype-link-mode">
 </head>
 <body>
   <div class="login" id="login" style="display:none;">
@@ -161,9 +161,14 @@
         <dialog id="prototype-add" aria-labelledby="prototype-add-heading">
           <form id="prototype-upload">
             <h3 id="prototype-add-heading">添加原型</h3>
-            <label><div>原型名称 <span>必填</span></div><input name="title" maxlength="80" placeholder="选好文件后自动填入，可修改" required></label>
+            <div class="prototype-add-mode" role="group" aria-label="添加方式">
+              <label><input type="radio" name="mode" value="link" checked> 添加链接</label>
+              <label><input type="radio" name="mode" value="file"> 上传文件</label>
+            </div>
+            <label><div>原型名称 <span>必填</span></div><input name="title" maxlength="80" placeholder="输入原型名称" required></label>
             <label><div>分类 <span>选填</span></div><input name="category" list="prototype-category-list" maxlength="40" placeholder="输入或选择分类"></label>
-            <fieldset>
+            <label id="prototype-link-field">原型链接<input name="prototypeUrl" type="url" placeholder="https://…" maxlength="8192" required></label>
+            <fieldset id="prototype-attachment-fields" hidden>
               <legend>上传内容</legend>
               <div class="prototype-file-picker">
                 <p id="prototype-selected-file" hidden></p>
@@ -173,14 +178,15 @@
                 </div>
                 <input name="archive" type="file" accept=".html,.htm,.zip" hidden>
                 <input name="folder" type="file" webkitdirectory multiple hidden>
-                <p class="prototype-edit-hint">单次最多 10 MB</p>
+                <p class="prototype-edit-hint">单次最多 1 MB</p>
                 <p id="prototype-size-error" role="alert"></p>
+                <button id="prototype-use-link" type="button" hidden>改用链接</button>
               </div>
             </fieldset>
             <p id="prototype-add-status" role="status"></p>
             <div class="prototype-edit-actions">
               <button type="button" id="prototype-add-cancel">取消</button>
-              <button type="submit" disabled>上传原型</button>
+              <button type="submit" disabled>保存链接</button>
             </div>
           </form>
         </dialog>
@@ -294,6 +300,6 @@
   <script src="xlsx.full.min.js"></script>
   <script src="lunar.min.js"></script>
   <script src="vendor/fflate.js"></script>
-  <script src="app.js?v=prototype-upload-size"></script>
+  <script src="app.js?v=prototype-link-mode"></script>
 </body>
 </html>
