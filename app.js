@@ -955,15 +955,21 @@ function closeModal(id) { document.getElementById(id).classList.remove('open'); 
 document.querySelectorAll('.modal-x').forEach(b => b.onclick = () => closeModal(b.dataset.close));
 
 /* ---------- 登录 / 退出 ---------- */
+const authTemplate = document.getElementById('auth-template');
+const authForm = authTemplate.content.querySelector('form');
+
 function showLogin() {
+  authTemplate.after(authForm);
   document.getElementById('login').style.display = 'flex';
   document.getElementById('app').style.display = 'none';
 }
 function showApp() {
+  authForm.reset();
+  authForm.remove();
   document.getElementById('login').style.display = 'none';
   document.getElementById('app').style.display = 'block';
 }
-document.getElementById('auth-form').addEventListener('submit', async (e) => {
+authForm.addEventListener('submit', async (e) => {
   e.preventDefault();
   const username = document.getElementById('auth-username').value.trim();
   const password = document.getElementById('auth-password').value;
@@ -1040,7 +1046,18 @@ function resetState() {
 }
 
 /* ---------- 修改密码 ---------- */
+const passwordTemplate = document.getElementById('password-template');
+const passwordModal = passwordTemplate.content.querySelector('.modal');
+const passwordForm = passwordModal.querySelector('form');
+
+function closePasswordEditor() {
+  passwordForm.reset();
+  passwordModal.classList.remove('open');
+  passwordModal.remove();
+}
+
 document.getElementById('u-password').onclick = () => {
+  passwordTemplate.after(passwordModal);
   document.getElementById('pw-old').value = '';
   document.getElementById('pw-new').value = '';
   document.getElementById('pw-new2').value = '';
@@ -1048,8 +1065,10 @@ document.getElementById('u-password').onclick = () => {
   document.getElementById('pw-msg').className = 'modal-msg';
   openModal('password-modal');
 };
-document.getElementById('pw-cancel').onclick = () => closeModal('password-modal');
-document.getElementById('pw-save').onclick = async () => {
+passwordModal.querySelector('#pw-cancel').onclick = closePasswordEditor;
+passwordModal.querySelector('.modal-x').onclick = closePasswordEditor;
+passwordForm.onsubmit = async event => {
+  event.preventDefault();
   const oldP = document.getElementById('pw-old').value;
   const newP = document.getElementById('pw-new').value;
   const newP2 = document.getElementById('pw-new2').value;
@@ -1067,14 +1086,20 @@ document.getElementById('pw-save').onclick = async () => {
   document.getElementById('pw-old').value = '';
   document.getElementById('pw-new').value = '';
   document.getElementById('pw-new2').value = '';
-  setTimeout(() => closeModal('password-modal'), 700);
+  setTimeout(closePasswordEditor, 700);
 };
 
 /* ---------- 账号管理 ---------- */
 document.getElementById('u-accounts').onclick = () => openAccountPage();
 document.getElementById('acct-back').onclick = () => closeAccountPage();
-document.getElementById('acct-add').onclick = addAccount;
+const accountAddTemplate = document.getElementById('account-add-template');
+const accountAddForm = accountAddTemplate.content.querySelector('form');
+accountAddForm.onsubmit = event => {
+  event.preventDefault();
+  return addAccount();
+};
 async function openAccountPage() {
+  accountAddTemplate.after(accountAddForm);
   document.getElementById('acct-name').value = '';
   document.getElementById('acct-username').value = '';
   document.getElementById('acct-password').value = '';
@@ -1087,6 +1112,8 @@ async function openAccountPage() {
   await loadAccounts();
 }
 function closeAccountPage() {
+  accountAddForm.reset();
+  accountAddForm.remove();
   document.getElementById('account-page').style.display = 'none';
   document.getElementById('main-tabs').style.display = 'flex';
   goTab('t1');
@@ -1497,7 +1524,7 @@ function renderDayPanel() {
     html += `<div class="day-birthday"><span class="bicon">🎂</span><span class="btext">${escapeHtml(birthday)} 的生日</span><button class="bwish" data-bwish="${escapeHtml(birthday)}">祝福</button></div>`;
   }
   html += `<div class="side-scroll">`;
-  html += `<div class="todo-input"><input id="today-text" placeholder="添加该日待办，回车"><button id="today-add">+</button></div>`;
+  html += `<div class="todo-input"><input id="today-text" autocomplete="off" placeholder="添加该日待办，回车"><button id="today-add">+</button></div>`;
   html += `<div id="today-list"></div>`;
   html += `</div>`;
   box.innerHTML = html;
@@ -1571,7 +1598,7 @@ function renderTodayList(list) {
   box.innerHTML = list.map(x => {
     const editing = x.id === editTodoId;
     const txt = editing
-      ? `<input class="todo-edit" id="todo-edit-input" value="${escapeHtml(x.text)}">`
+      ? `<input class="todo-edit" id="todo-edit-input" autocomplete="off" value="${escapeHtml(x.text)}">`
       : `<div class="txt">${escapeHtml(x.text)}</div>`;
     const acts = editing
       ? `<button class="mx" data-tsave="${x.id}">保存</button><button class="mx" data-tcancel="1">取消</button>`
@@ -1733,7 +1760,7 @@ function renderLong() {
   box.innerHTML = longTodos.map(x => {
     const editing = x.id === editLongId;
     const txt = editing
-      ? `<input class="todo-edit" id="long-edit-input" value="${escapeHtml(x.text)}">`
+      ? `<input class="todo-edit" id="long-edit-input" autocomplete="off" value="${escapeHtml(x.text)}">`
       : `<div class="txt">${escapeHtml(x.text)}</div>`;
     const acts = editing
       ? `<button class="mx" data-lsave="${x.id}">保存</button><button class="mx" data-lcancel="1">取消</button>`
@@ -1833,7 +1860,7 @@ function renderMessages() {
     const likeNames = likes.map(id => memberName(id)).join('、');
     let body;
     if (editMid === m.id) {
-      body = `<div class="mrow"><span class="mname" style="color:${u.color}">${escapeHtml(u.name)}</span></div><input class="mtext-edit" id="edit-input" value="${escapeHtml(m.text)}">`;
+      body = `<div class="mrow"><span class="mname" style="color:${u.color}">${escapeHtml(u.name)}</span></div><input class="mtext-edit" id="edit-input" autocomplete="off" value="${escapeHtml(m.text)}">`;
     } else {
       body = `<div class="mrow"><span class="mname" style="color:${u.color}">${escapeHtml(u.name)}</span><span class="mtime">${fmtTime(m.created_at)}</span></div><div class="mtext">${escapeHtml(m.text)}</div>`;
     }
