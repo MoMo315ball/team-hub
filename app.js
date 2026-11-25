@@ -660,13 +660,26 @@ const prototypeAddCancel = document.getElementById('prototype-add-cancel');
 const prototypeAddStatus = document.getElementById('prototype-add-status');
 const prototypeAddSubmit = prototypeForm.querySelector('[type=submit]');
 const prototypeSelection = document.getElementById('prototype-selected-file');
+const prototypeSizeError = document.getElementById('prototype-size-error');
 const prototypePickerButtons = [...prototypeForm.querySelectorAll('[data-file-picker]')];
 let prototypeSuggestedTitle = '';
 let prototypeUploading = false;
 
+function prototypeUploadSize(file, folderFiles) {
+  return file?.size ?? [...folderFiles].reduce((total, item) => total + item.size, 0);
+}
+
+function formatPrototypeUploadSize(bytes) {
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1024 ** 2) return (bytes / 1024).toFixed(1) + ' KB';
+  return (bytes / 1024 ** 2).toFixed(2) + ' MB';
+}
+
 function refreshPrototypeUploadForm() {
   const { title, archive, folder } = prototypeForm.elements;
-  prototypeAddSubmit.disabled = prototypeUploading || !title.value.trim() || !(archive.files.length || folder.files.length);
+  const tooLarge = prototypeUploadSize(archive.files[0], folder.files) > prototypeLimit;
+  prototypeSizeError.textContent = tooLarge ? '所选内容超过 10 MB，请更换文件或压缩后再上传。' : '';
+  prototypeAddSubmit.disabled = prototypeUploading || tooLarge || !title.value.trim() || !(archive.files.length || folder.files.length);
 }
 
 prototypeAddOpen.onclick = () => {
@@ -696,7 +709,8 @@ for (const button of prototypePickerButtons) {
       const suggestion = (isFolder ? label : label.replace(/\.(html?|zip)$/i, '')).slice(0, 80);
       if (!title.value.trim() || title.value === prototypeSuggestedTitle) title.value = suggestion;
       prototypeSuggestedTitle = suggestion;
-      prototypeSelection.textContent = isFolder ? label + ' · ' + input.files.length + ' 个文件' : label;
+      const size = formatPrototypeUploadSize(prototypeUploadSize(archive.files[0], folder.files));
+      prototypeSelection.textContent = [label, ...(isFolder ? [input.files.length + ' 个文件'] : []), size].join(' · ');
     }
     prototypeSelection.hidden = !(archive.files.length || folder.files.length);
     prototypeAddStatus.textContent = '';
@@ -725,7 +739,7 @@ prototypeForm.addEventListener('submit', async event => {
     let blob = file;
     const zip = !file || /\.zip$/i.test(file.name);
     if (file && !/\.(html?|zip)$/i.test(file.name)) throw new Error('请选择 HTML 或 ZIP 文件。');
-    if ((file?.size ?? folderFiles.reduce((sum, item) => sum + item.size, 0)) > prototypeLimit) {
+    if (prototypeUploadSize(file, folderFiles) > prototypeLimit) {
       throw new Error('单次上传最多 10 MB。');
     }
     if (!file) {
